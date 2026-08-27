@@ -1,0 +1,887 @@
+{% extends "base.html" %}
+{% block title %}Volunteer Assignment — FNRG Preaching{% endblock %}
+{% block page_title %}Volunteer Assignment{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Assign volunteers to locations and see who's covering what at a glance.</p>
+
+<!-- Lightweight toast for AJAX success/error messages (replaces Flask flash+redirect) -->
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<!-- Global loading overlay — shown while any api() call is in flight -->
+<div class="api-loader-overlay" id="apiLoaderOverlay" hidden aria-hidden="true">
+  <div class="api-loader-spinner"></div>
+</div>
+
+<section class="form-card">
+  <h3>New Assignment</h3>
+  <form class="stacked-form" id="assignForm">
+    <div class="table-scroll-x table-scroll-y">
+      <table class="rows-table" id="assignRowsTable">
+        <thead>
+          <tr>
+            <th class="col-book">Volunteer</th>
+            <th class="col-book">Location</th>
+            <th class="col-book">Event</th>
+            <th class="col-price">Date</th>
+            <th class="col-remove"></th>
+          </tr>
+        </thead>
+        <tbody id="assignRowsBody">
+          <!-- rows cloned in here from #assignRowTemplate -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row-actions">
+      <button type="button" class="btn-add-row" id="addAssignRowBtn">+ Add Another</button>
+      <button type="button" class="btn-add-row" id="addMasterBtn">+ Add Location / Event</button>
+    </div>
+
+    <button type="submit" class="btn-enter" id="assignSubmitBtn">Submit</button>
+  </form>
+</section>
+
+<!-- Hidden template for one assignment row -->
+<template id="assignRowTemplate">
+  <tr class="book-row">
+    <td class="col-book" data-label="Volunteer">
+      <select class="row-volunteer" name="volunteer" required>
+        <option value="" disabled selected>Select a volunteer</option>
+        {% for v in volunteers %}<option value="{{ v.username }}">{{ v.username }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="col-book" data-label="Location">
+      <select class="row-location" name="location" required>
+        <option value="" disabled selected>Select a location</option>
+        {% for l in locations %}<option value="{{ l.name }}">{{ l.name }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="col-book" data-label="Event">
+      <select class="row-event" name="event">
+        <option value="" selected>Select an event</option>
+        {% for e in events %}<option value="{{ e.name }}">{{ e.name }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="col-price" data-label="Date">
+      <input type="date" class="row-date" name="date" required>
+    </td>
+    <td class="col-remove">
+      <button type="button" class="btn-remove-newrow" title="Remove this row">Delete</button>
+    </td>
+  </tr>
+</template>
+
+<!-- ── Add Location / Event popup (single modal, type toggle) ── -->
+<div class="modal-overlay" id="addMasterOverlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3 id="addMasterTitle">Add Location / Event</h3>
+      <button type="button" class="modal-close" data-close-modal="addMasterOverlay">&times;</button>
+    </div>
+
+    <div class="type-toggle" role="radiogroup" aria-label="What are you adding?">
+      <label class="type-toggle-option">
+        <input type="radio" name="masterType" value="location" checked>
+        <span>Location</span>
+      </label>
+      <label class="type-toggle-option">
+        <input type="radio" name="masterType" value="event">
+        <span>Event</span>
+      </label>
+    </div>
+
+    <form id="addMasterForm" class="modal-form">
+      <div class="field">
+        <label for="newMasterName" id="newMasterLabel">Location name</label>
+        <input type="text" id="newMasterName" name="name" required placeholder="e.g. Central Park Booth">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-toggle" data-close-modal="addMasterOverlay">Cancel</button>
+        <button type="submit" class="btn-enter" id="addMasterSubmit">Save Location</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- ── /Add Location / Event popup ─────────────────────────────── -->
+
+<!-- ── Current Assignments ─────────────────────────────────────── -->
+<section class="table-card">
+  <h3>Current Assignments</h3>
+
+  <!-- Bulk toolbar: visible only when ≥1 row is checked -->
+  <div class="bulk-toolbar" id="bulkToolbar" hidden>
+    <span class="bulk-count" id="bulkCount">0 selected</span>
+    <button type="button" class="btn-bulk-delete" id="bulkDeleteBtn" disabled>Delete Selected</button>
+    <button type="button" class="btn-bulk-cancel" id="bulkCancelBtn">Cancel</button>
+  </div>
+
+  <div class="table-scroll-x table-scroll-y rows-8">
+    <table class="data-table" id="assignmentsTable">
+      <thead>
+        <tr>
+          <th class="col-check">
+            <input type="checkbox" id="selectAllChk" title="Select all">
+          </th>
+          <th>Volunteer</th>
+          <th>
+            <div class="th-filter-wrap">
+              <span>Location</span>
+              <button type="button" class="th-filter-btn" data-col="location" title="Filter">&#9662;</button>
+              <div class="th-filter-menu" data-menu="location" hidden>
+                <div class="th-filter-menu-actions">
+                  <button type="button" class="th-filter-selectall" data-menu="location">Select All</button>
+                  <button type="button" class="th-filter-clear" data-menu="location">Clear</button>
+                </div>
+                <div class="th-filter-options" data-options="location"></div>
+                <div class="th-filter-menu-footer">
+                  <button type="button" class="btn-toggle th-filter-apply" data-menu="location">Apply</button>
+                </div>
+              </div>
+            </div>
+          </th>
+          <th>
+            <div class="th-filter-wrap">
+              <span>Event</span>
+              <button type="button" class="th-filter-btn" data-col="event" title="Filter">&#9662;</button>
+              <div class="th-filter-menu" data-menu="event" hidden>
+                <div class="th-filter-menu-actions">
+                  <button type="button" class="th-filter-selectall" data-menu="event">Select All</button>
+                  <button type="button" class="th-filter-clear" data-menu="event">Clear</button>
+                </div>
+                <div class="th-filter-options" data-options="event"></div>
+                <div class="th-filter-menu-footer">
+                  <button type="button" class="btn-toggle th-filter-apply" data-menu="event">Apply</button>
+                </div>
+              </div>
+            </div>
+          </th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="assignmentsBody">
+        {% for a in assignments %}
+        <tr data-assignment-id="{{ a['id'] }}" data-location="{{ a.location }}" data-event="{{ a.event or '' }}">
+          <td class="col-check">
+            <input type="checkbox" class="row-chk" value="{{ a['id'] }}">
+          </td>
+          <td>{{ a.volunteer_username }}</td>
+          <td>{{ a.location }}</td>
+          <td>{{ a.event or '—' }}</td>
+          <td>{{ a.assignment_date }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="hint-text" id="emptyHint" {% if assignments %}style="display:none;"{% endif %}>
+    No assignments yet — add one above.
+  </p>
+  <p class="hint-text" id="noFilterMatch" style="display:none;">
+    No assignments match the current filters.
+  </p>
+</section>
+<!-- ── /Current Assignments ────────────────────────────────────── -->
+
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>Locations Overview</h3>
+    <div class="corner-badge">
+      <span class="corner-badge-label" id="ovFilterLabel">Total Sales — {{ ov_filter_label }}</span>
+      <span class="corner-badge-value" id="ovTotalSales">&#8377;{{ "{:,.0f}".format(ov_total_sales) }}</span>
+    </div>
+  </div>
+  <p class="hint-text">How many volunteers are currently assigned to each location/event.</p>
+
+  <form class="filter-bar" id="overviewFilterForm">
+    <div class="field">
+      <label for="ov_date_from">From Date</label>
+      <input type="date" id="ov_date_from" name="ov_date_from" value="{{ ov_date_from }}" max="{{ today }}">
+    </div>
+    <div class="field">
+      <label for="ov_date">Date</label>
+      <input type="date" id="ov_date" name="ov_date" value="{{ ov_date }}" max="{{ today }}">
+    </div>
+    <div class="field">
+      <label for="ov_location">Location</label>
+      <select id="ov_location" name="ov_location">
+        <option value="all" {{ 'selected' if ov_location == 'all' }}>All Locations</option>
+        {% for l in locations %}
+        <option value="{{ l.name }}" {{ 'selected' if ov_location == l.name }}>{{ l.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="ov_event">Event</label>
+      <select id="ov_event" name="ov_event">
+        <option value="all" {{ 'selected' if ov_event == 'all' }}>All Events</option>
+        {% for e in events %}
+        <option value="{{ e.name }}" {{ 'selected' if ov_event == e.name }}>{{ e.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-filter">Apply Filters</button>
+    <button type="button" class="btn-toggle" id="clearFiltersBtn" {% if not (ov_date_from or ov_date or ov_location != 'all' or ov_event != 'all') %}hidden{% endif %}>Clear</button>
+  </form>
+
+  <div class="location-grid" id="locationGrid">
+    {% for l in locations %}
+    {% if ov_location == 'all' or ov_location == l.name %}
+    {% set vcount = location_counts.get(l.name.strip(), 0) %}
+    <div class="location-card {{ 'has-volunteers' if vcount > 0 else 'no-volunteers' }}" data-location="{{ l.name }}">
+      <span class="location-name">{{ l.name.strip() }}</span>
+      <span class="location-count" data-role="count">{{ vcount }}</span>
+      <div class="location-sales">
+        <span class="location-sales-label">Total Sales</span>
+        <span class="location-sales-value">&#8377;{{ "{:,.0f}".format(ov_sales_by_location.get(l.name.strip(), 0)) }}</span>
+      </div>
+      <div class="location-names" data-role="names"></div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* =============================================================
+   Initial state — hydrated straight from the SSR render so the
+   page paints fully on landing with zero extra network calls.
+   Every mutation below (create, delete, add master data, filter)
+   talks to a small JSON endpoint and patches this state + the DOM
+   in place — no full-page reload anywhere past this point.
+   ============================================================= */
+const STATE = {
+  volunteers: {{ volunteers | tojson }},
+  locations:  {{ locations  | tojson }},
+  events:     {{ events     | tojson }},
+};
+
+/* ── tiny toast helper (replaces Flask flash + redirect) ─────── */
+const toastStack = document.getElementById("toastStack");
+function toast(message, kind) {
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind || "info"}`;
+  el.textContent = message;
+  toastStack.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("visible"));
+  setTimeout(() => {
+    el.classList.remove("visible");
+    el.addEventListener("transitionend", () => el.remove(), { once: true });
+  }, 3500);
+}
+
+/* ── global loader: caller-controlled, not tied to every api() call.  ── */
+/* ── Each click/submit handler owns its own show/hide with try/finally ── */
+/* ── so it's 1:1 with the user action, never left on by a stray call. ── */
+const apiLoaderOverlay = document.getElementById("apiLoaderOverlay");
+
+function showLoader() { apiLoaderOverlay.hidden = false; }
+function hideLoader()  { apiLoaderOverlay.hidden = true; }
+
+async function api(url, options) {
+  const resp = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  let body = null;
+  try { body = await resp.json(); } catch (_) { /* no body */ }
+  if (!resp.ok) {
+    throw new Error((body && body.error) || `Request failed (${resp.status})`);
+  }
+  return body;
+}
+
+/* ── New-assignment form ────────────────────────────────────── */
+const rowsBody    = document.getElementById("assignRowsBody");
+const rowTemplate = document.getElementById("assignRowTemplate");
+const addRowBtn   = document.getElementById("addAssignRowBtn");
+const assignForm  = document.getElementById("assignForm");
+const assignSubmitBtn = document.getElementById("assignSubmitBtn");
+
+function optionsHtml(items, labelKey) {
+  return items.map(item => {
+    const val = typeof item === "string" ? item : item[labelKey];
+    return `<option value="${val}">${val}</option>`;
+  }).join("");
+}
+
+function updateVolunteerDropdowns() {
+  const selected = Array.from(rowsBody.querySelectorAll(".row-volunteer"))
+    .map(s => s.value).filter(v => v !== "");
+
+  rowsBody.querySelectorAll(".row-volunteer").forEach(select => {
+    const current = select.value;
+    Array.from(select.options).forEach(option => {
+      if (!option.value) return;
+      const takenByOther = selected.includes(option.value) && option.value !== current;
+      option.hidden   = takenByOther;
+      option.disabled = takenByOther;
+    });
+  });
+}
+
+function todayIso() { return new Date().toISOString().split("T")[0]; }
+
+function clearRow(row) {
+  row.querySelector(".row-volunteer").value = "";
+  row.querySelector(".row-location").value  = "";
+  row.querySelector(".row-event").value     = "";
+  const dateInput = row.querySelector(".row-date");
+  dateInput.valueAsDate = new Date();
+  dateInput.max = todayIso();
+  updateVolunteerDropdowns();
+}
+
+function wireRow(row) {
+  row.querySelector(".btn-remove-newrow").addEventListener("click", () => {
+    if (rowsBody.querySelectorAll(".book-row").length > 1) {
+      row.remove();
+      updateVolunteerDropdowns();
+    } else {
+      clearRow(row);
+    }
+  });
+  row.querySelector(".row-volunteer").addEventListener("change", updateVolunteerDropdowns);
+}
+
+function addRow() {
+  const fragment = rowTemplate.content.cloneNode(true);
+  rowsBody.appendChild(fragment);
+  const liveRow   = rowsBody.lastElementChild;
+  const dateInput = liveRow.querySelector(".row-date");
+  dateInput.valueAsDate = new Date();
+  dateInput.max = todayIso();
+  wireRow(liveRow);
+  updateVolunteerDropdowns();
+  return liveRow;
+}
+
+addRowBtn.addEventListener("click", addRow);
+addRow(); // initial row
+
+assignForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const rows = Array.from(rowsBody.querySelectorAll(".book-row")).map(row => ({
+    volunteer: row.querySelector(".row-volunteer").value,
+    location:  row.querySelector(".row-location").value,
+    event:     row.querySelector(".row-event").value,
+    date:      row.querySelector(".row-date").value,
+  })).filter(r => r.volunteer && r.location && r.date);
+
+  if (!rows.length) {
+    toast("Fill in at least one complete row (volunteer, location, date).", "error");
+    return;
+  }
+
+  assignSubmitBtn.disabled = true;
+  showLoader();
+  try {
+    const result = await api("{{ url_for('users.volunteers_assignments') }}", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    });
+
+    // Refetch from the server instead of hand-building the row from the
+    // create response — guarantees the id/columns shown match the DB
+    // exactly, avoiding drift if the backend's create response ever omits
+    // or renames fields (that mismatch previously caused newly-added rows
+    // to have a broken/undefined id, which made bulk-delete on them fail
+    // with a 400 until a real page refresh pulled the correct id).
+    await refreshOverview(false);
+
+    // reset form back to a single clean row
+    rowsBody.innerHTML = "";
+    addRow();
+
+    toast(`${result.count} assignment(s) registered.`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    assignSubmitBtn.disabled = false;
+    hideLoader();
+  }
+});
+
+/* ── Current Assignments: DOM row helpers ─────────────────────── */
+const assignmentsBody = document.getElementById("assignmentsBody");
+const emptyHint   = document.getElementById("emptyHint");
+const noMatchHint = document.getElementById("noFilterMatch");
+
+/* ── Add Location / Event modal (single popup, type toggle) ── */
+const addMasterOverlay = document.getElementById("addMasterOverlay");
+const addMasterForm    = document.getElementById("addMasterForm");
+const addMasterTitle   = document.getElementById("addMasterTitle");
+const newMasterLabel   = document.getElementById("newMasterLabel");
+const newMasterName    = document.getElementById("newMasterName");
+const addMasterSubmit  = document.getElementById("addMasterSubmit");
+
+const MASTER_TYPE_CONFIG = {
+  location: {
+    endpoint: "/api/master-data/locations",
+    title: "Add Location",
+    label: "Location name",
+    placeholder: "e.g. Central Park Booth",
+    submit: "Save Location"
+  },
+  event: {
+    endpoint: "/api/master-data/events",
+    title: "Add Event",
+    label: "Event name",
+    placeholder: "e.g. Spring Convention",
+    submit: "Save Event"
+  }
+};
+
+function applyMasterType(type) {
+  const cfg = MASTER_TYPE_CONFIG[type];
+  addMasterTitle.textContent  = cfg.title;
+  newMasterLabel.textContent  = cfg.label;
+  newMasterName.placeholder   = cfg.placeholder;
+  addMasterSubmit.textContent = cfg.submit;
+}
+
+document.querySelectorAll('input[name="masterType"]').forEach(radio => {
+  radio.addEventListener("change", () => applyMasterType(radio.value));
+});
+
+function openModal(id) {
+  document.getElementById(id).classList.add("visible");
+  if (id === "addMasterOverlay") {
+    const checked = document.querySelector('input[name="masterType"]:checked');
+    applyMasterType(checked ? checked.value : "location");
+    newMasterName.value = "";
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.remove("visible"); }
+
+document.getElementById("addMasterBtn").addEventListener("click", () => openModal("addMasterOverlay"));
+
+document.querySelectorAll("[data-close-modal]").forEach(btn => {
+  btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
+});
+document.querySelectorAll(".modal-overlay").forEach(overlay => {
+  overlay.addEventListener("click", e => {
+    if (e.target === overlay) closeModal(overlay.id);
+  });
+});
+
+addMasterForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const type = document.querySelector('input[name="masterType"]:checked').value;
+  const cfg  = MASTER_TYPE_CONFIG[type];
+  const name = newMasterName.value.trim();
+  if (!name) return;
+
+  addMasterSubmit.disabled = true;
+  showLoader();
+  try {
+    const created = await api(cfg.endpoint, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+
+    if (type === "location") {
+      STATE.locations.push(created);
+      addLocationEverywhere(created);
+    } else {
+      STATE.events.push(created);
+      addEventEverywhere(created);
+    }
+
+    toast(`${cfg.title.replace("Add ", "")} "${name}" added.`, "success");
+    closeModal("addMasterOverlay");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    addMasterSubmit.disabled = false;
+    hideLoader();
+  }
+});
+
+function addLocationEverywhere(loc) {
+  // 1. every "Location" <select> in existing + future assignment rows
+  document.querySelectorAll(".row-location").forEach(sel => {
+    sel.insertAdjacentHTML("beforeend", `<option value="${loc.name}">${loc.name}</option>`);
+  });
+  // 2. the overview filter dropdown
+  document.getElementById("ov_location")
+    .insertAdjacentHTML("beforeend", `<option value="${loc.name}">${loc.name}</option>`);
+  // 3. a fresh card in the Locations Overview grid
+  const grid = document.getElementById("locationGrid");
+  grid.insertAdjacentHTML("beforeend", `
+    <div class="location-card no-volunteers" data-location="${loc.name}">
+      <span class="location-name">${loc.name}</span>
+      <span class="location-count" data-role="count">0</span>
+      <div class="location-sales">
+        <span class="location-sales-label">Total Sales</span>
+        <span class="location-sales-value">&#8377;0</span>
+      </div>
+      <div class="location-names" data-role="names"></div>
+    </div>
+  `);
+  rebuildFilterMenusOnNextOpen();
+}
+
+function addEventEverywhere(evt) {
+  document.querySelectorAll(".row-event").forEach(sel => {
+    sel.insertAdjacentHTML("beforeend", `<option value="${evt.name}">${evt.name}</option>`);
+  });
+  document.getElementById("ov_event")
+    .insertAdjacentHTML("beforeend", `<option value="${evt.name}">${evt.name}</option>`);
+  rebuildFilterMenusOnNextOpen();
+}
+
+/* ── Bulk-delete: Current Assignments ──────────────────────── */
+const selectAllChk  = document.getElementById("selectAllChk");
+const bulkToolbar   = document.getElementById("bulkToolbar");
+const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+const bulkCountEl   = document.getElementById("bulkCount");
+const bulkCancelBtn = document.getElementById("bulkCancelBtn");
+
+function getChecked() {
+  return Array.from(document.querySelectorAll(".row-chk:checked"));
+}
+
+function syncToolbar() {
+  const checked = getChecked();
+  const count   = checked.length;
+  const total   = document.querySelectorAll(".row-chk").length;
+
+  bulkToolbar.hidden      = count === 0;
+  bulkDeleteBtn.disabled  = count === 0;
+  bulkCountEl.textContent = count === 1 ? "1 selected" : `${count} selected`;
+
+  selectAllChk.checked       = count === total && total > 0;
+  selectAllChk.indeterminate = count > 0 && count < total;
+}
+
+selectAllChk.addEventListener("change", () => {
+  document.querySelectorAll(".row-chk").forEach(chk => { chk.checked = selectAllChk.checked; });
+  syncToolbar();
+});
+
+assignmentsBody.addEventListener("change", e => {
+  if (e.target.classList.contains("row-chk")) syncToolbar();
+});
+
+bulkCancelBtn.addEventListener("click", () => {
+  document.querySelectorAll(".row-chk").forEach(chk => chk.checked = false);
+  selectAllChk.checked       = false;
+  selectAllChk.indeterminate = false;
+  syncToolbar();
+});
+
+bulkDeleteBtn.addEventListener("click", async () => {
+  const checked = getChecked();
+  const ids = checked.map(chk => chk.value);
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} assignment${ids.length !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+
+  bulkDeleteBtn.disabled = true;
+  showLoader();
+  try {
+    const result = await api("{{ url_for('users.volunteer_assignments_bulk_delete') }}", {
+      method: "POST",
+      body: JSON.stringify({ assignment_ids: ids }),
+    });
+
+    result.ids.forEach(id => {
+      const row = assignmentsBody.querySelector(`tr[data-assignment-id="${id}"]`);
+      if (row) row.remove();
+    });
+
+    if (!assignmentsBody.querySelectorAll("tr[data-assignment-id]").length) {
+      emptyHint.style.display = "";
+    }
+
+    bulkCancelBtn.click();
+    applyFilters();
+    toast(`${result.deleted} assignment(s) deleted.`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    bulkDeleteBtn.disabled = false;
+    hideLoader();
+  }
+});
+
+/* ── Overview filter bar — fetch + in-place update, no reload ── */
+const overviewFilterForm = document.getElementById("overviewFilterForm");
+const clearFiltersBtn    = document.getElementById("clearFiltersBtn");
+const ovFilterLabel      = document.getElementById("ovFilterLabel");
+const ovTotalSales       = document.getElementById("ovTotalSales");
+const locationGrid       = document.getElementById("locationGrid");
+
+function currentFilterParams(form) {
+  return new URLSearchParams(new FormData(form));
+}
+
+function inrFormat(n) {
+  return "\u20b9" + Math.round(n || 0).toLocaleString("en-IN");
+}
+
+function renderLocationGrid(locations, ovLocationFilter, locationCounts, salesByLocation) {
+  locationGrid.innerHTML = locations
+    .filter(l => ovLocationFilter === "all" || ovLocationFilter === l.name)
+    .map(l => {
+      const name  = l.name.trim();
+      const count = locationCounts[name] || 0;
+      const sales = salesByLocation[name] || 0;
+      return `
+        <div class="location-card ${count > 0 ? "has-volunteers" : "no-volunteers"}" data-location="${l.name}">
+          <span class="location-name">${name}</span>
+          <span class="location-count" data-role="count">${count}</span>
+          <div class="location-sales">
+            <span class="location-sales-label">Total Sales</span>
+            <span class="location-sales-value">${inrFormat(sales)}</span>
+          </div>
+          <div class="location-names" data-role="names"></div>
+        </div>
+      `;
+    }).join("");
+}
+
+function renderAssignmentsTable(assignments) {
+  assignmentsBody.innerHTML = assignments.map(a => `
+    <tr data-assignment-id="${a.id}" data-location="${a.location}" data-event="${a.event || ""}">
+      <td class="col-check"><input type="checkbox" class="row-chk" value="${a.id}"></td>
+      <td>${a.volunteer_username}</td>
+      <td>${a.location}</td>
+      <td>${a.event || "—"}</td>
+      <td>${a.assignment_date}</td>
+    </tr>
+  `).join("");
+  emptyHint.style.display = assignments.length ? "none" : "";
+  rebuildFilterMenusOnNextOpen();
+}
+
+async function refreshOverview(pushUrl) {
+  const params = currentFilterParams(overviewFilterForm);
+  showLoader();
+  try {
+    const data = await api(`/api/volunteer-assignment/overview?${params.toString()}`);
+
+    renderAssignmentsTable(data.assignments);
+    renderLocationGrid(STATE.locations, data.ov_location, data.location_counts, data.ov_sales_by_location);
+    ovFilterLabel.textContent = `Total Sales — ${data.ov_filter_label}`;
+    ovTotalSales.textContent  = inrFormat(data.ov_total_sales);
+
+    const hasFilters = data.ov_date_from || data.ov_date || data.ov_location !== "all" || data.ov_event !== "all";
+    clearFiltersBtn.hidden = !hasFilters;
+
+    applyFilters(); // re-apply the excel-style column filters on the fresh rows
+
+    if (pushUrl) {
+      const url = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, "", url);
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    hideLoader();
+  }
+}
+
+overviewFilterForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  refreshOverview(true);
+});
+
+clearFiltersBtn.addEventListener("click", () => {
+  overviewFilterForm.reset();
+  document.getElementById("ov_location").value = "all";
+  document.getElementById("ov_event").value = "all";
+  refreshOverview(true);
+});
+
+/* Nudge callers that add a fresh location/event to just refetch the
+   overview if the excel-style filter menus are open, so option lists
+   for location/event columns stay accurate. Cheap no-op otherwise. */
+function rebuildFilterMenusOnNextOpen() {
+  document.querySelectorAll(".th-filter-menu").forEach(menu => { menu.hidden = true; });
+}
+
+/* ── Excel-style column filters: Current Assignments ─────────── */
+(function () {
+  const MIN_VISIBLE_ROWS = 8;
+  const activeFilters = { location: null, event: null }; // null = no filter (show all)
+
+  function getRealRows() {
+    return Array.from(assignmentsBody.querySelectorAll("tr[data-assignment-id]"));
+  }
+
+  function uniqueValues(col) {
+    const set = new Set();
+    getRealRows().forEach(row => {
+      const v = row.dataset[col] || "(Blank)";
+      set.add(v.trim() === "" ? "(Blank)" : v);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
+
+  function buildMenu(col) {
+    const optionsWrap = document.querySelector(`.th-filter-options[data-options="${col}"]`);
+    optionsWrap.innerHTML = "";
+    const values = uniqueValues(col);
+    const selected = activeFilters[col]; // null = all selected
+
+    values.forEach(val => {
+      const id = `flt-${col}-${val.replace(/[^a-z0-9]/gi, "_")}`;
+      const isChecked = selected === null || selected.has(val);
+      const label = document.createElement("label");
+      label.innerHTML = `<input type="checkbox" id="${id}" value="${val.replace(/"/g, "&quot;")}" ${isChecked ? "checked" : ""}> <span>${val}</span>`;
+      optionsWrap.appendChild(label);
+    });
+  }
+
+  function renderFillerRows(visibleCount) {
+    assignmentsBody.querySelectorAll(".filler-row").forEach(r => r.remove());
+    const colCount = assignmentsBody.closest("table").querySelectorAll("thead th").length;
+    const fillersNeeded = Math.max(0, MIN_VISIBLE_ROWS - visibleCount);
+    for (let i = 0; i < fillersNeeded; i++) {
+      const tr = document.createElement("tr");
+      tr.className = "filler-row";
+      tr.innerHTML = `<td colspan="${colCount}">&nbsp;</td>`;
+      assignmentsBody.appendChild(tr);
+    }
+  }
+
+  window.applyFilters = function applyFilters() {
+    const rows = getRealRows();
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+      const locVal = (row.dataset.location || "").trim() || "(Blank)";
+      const evtVal = (row.dataset.event || "").trim() || "(Blank)";
+      const locOk = activeFilters.location === null || activeFilters.location.has(locVal);
+      const evtOk = activeFilters.event === null || activeFilters.event.has(evtVal);
+      const show = locOk && evtOk;
+      row.style.display = show ? "" : "none";
+      if (show) visibleCount++;
+    });
+
+    const totalRows = rows.length;
+    noMatchHint.style.display = (totalRows > 0 && visibleCount === 0) ? "" : "none";
+    if (totalRows > 0) emptyHint.style.display = "none";
+
+    document.querySelectorAll(".th-filter-btn").forEach(btn => {
+      btn.classList.toggle("active", activeFilters[btn.dataset.col] !== null);
+    });
+
+    renderFillerRows(visibleCount);
+  };
+
+  function readFromMenu(col) {
+    const checks = Array.from(
+      document.querySelectorAll(`.th-filter-options[data-options="${col}"] input[type="checkbox"]`)
+    );
+    const checkedVals = checks.filter(c => c.checked).map(c => c.value);
+    activeFilters[col] = checkedVals.length === checks.length ? null : new Set(checkedVals);
+    applyFilters();
+  }
+
+  function closeAllMenus(except) {
+    document.querySelectorAll(".th-filter-menu").forEach(menu => {
+      if (menu !== except) menu.hidden = true;
+    });
+  }
+
+  function positionMenu(btn, menu) {
+    const rect = btn.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth || 180;
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - 8) left = window.innerWidth - menuWidth - 8;
+    menu.style.top  = `${rect.bottom + 6}px`;
+    menu.style.left = `${Math.max(8, left)}px`;
+  }
+
+  document.querySelectorAll(".th-filter-btn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const col = btn.dataset.col;
+      const menu = document.querySelector(`.th-filter-menu[data-menu="${col}"]`);
+      const isHidden = menu.hidden;
+      closeAllMenus();
+      if (isHidden) {
+        buildMenu(col);
+        menu.hidden = false;
+        positionMenu(btn, menu);
+      }
+    });
+  });
+
+  document.querySelector(".table-scroll-y")?.addEventListener("scroll", () => closeAllMenus());
+  window.addEventListener("resize", () => closeAllMenus());
+
+  document.addEventListener("click", e => {
+    if (!e.target.closest(".th-filter-menu") && !e.target.closest(".th-filter-btn")) closeAllMenus();
+  });
+
+  document.querySelectorAll(".th-filter-selectall").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const col = btn.dataset.menu;
+      document.querySelectorAll(`.th-filter-options[data-options="${col}"] input[type="checkbox"]`)
+        .forEach(chk => chk.checked = true);
+      readFromMenu(col);
+    });
+  });
+
+  document.querySelectorAll(".th-filter-clear").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const col = btn.dataset.menu;
+      document.querySelectorAll(`.th-filter-options[data-options="${col}"] input[type="checkbox"]`)
+        .forEach(chk => chk.checked = false);
+      readFromMenu(col);
+    });
+  });
+
+  document.querySelectorAll(".th-filter-options").forEach(wrap => {
+    wrap.addEventListener("change", e => {
+      if (e.target.type === "checkbox") readFromMenu(wrap.dataset.options);
+    });
+  });
+
+  renderFillerRows(getRealRows().length);
+})();
+</script>
+
+<style>
+/* Minimal styling for the toast stack — merge into your stylesheet, drop from here */
+.toast-stack { position: fixed; top: 16px; right: 16px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 10px 16px; border-radius: 6px; background: #333; color: #fff; opacity: 0; transform: translateY(-8px); transition: opacity .2s, transform .2s; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast-success { background: #1b7f3a; }
+.toast-error { background: #b3261e; }
+
+/* Global loading overlay — smooth conic-gradient ring, dark green
+   fading to light green, built from the app's real palette. */
+.api-loader-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  pointer-events: none;
+}
+.api-loader-spinner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    var(--teal-dark, #0b5d4a),
+    var(--teal-mid, #0e8f6f) 45%,
+    var(--green-bright, #22b573) 75%,
+    transparent 100%
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+  filter: drop-shadow(0 4px 10px rgba(11, 93, 74, 0.35));
+  animation: fnrg-spin 0.8s linear infinite;
+}
+</style>
+{% endblock %}

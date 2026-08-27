@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}FNRG Preaching{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body class="app-body"><!-- sidebar/dashboard layout, see style.css .app-body rules -->
+
+  <div class="app-shell">
+    <!-- Backdrop shown behind the sidebar on mobile when it's open -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="sidebar-logo">
+        <span class="sidebar-brand-text">FNRG Preaching</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="{{ url_for('books.dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'books.dashboard' }}">
+          <span class="nav-icon">&#9635;</span><span class="nav-label">Dashboard & Analytics</span>
+        </a>
+        <a href="{{ url_for('books.sell_entry') }}" class="nav-link {{ 'active' if request.endpoint == 'books.sell_entry' }}">
+          <span class="nav-icon">&#128214;</span><span class="nav-label">Books &amp; Sell Entry</span>
+        </a>
+        <a href="{{ url_for('books.inward_stock') }}" class="nav-link {{ 'active' if request.endpoint == 'books.inward_stock' }}">
+          <span class="nav-icon">&#128230;</span><span class="nav-label">Inward Stock</span>
+        </a>
+        <a href="{{ url_for('users.volunteer_assignment') }}" class="nav-link {{ 'active' if request.endpoint == 'users.volunteer_assignment' }}">
+          <span class="nav-icon">&#129485;</span><span class="nav-label">Volunteer Assignment</span>
+        </a>
+        <a href="{{ url_for('books.backup') }}" class="nav-link {{ 'active' if request.endpoint in ('books.backup', 'books.backup_download') }}">
+          <span class="nav-icon">&#128190;</span><span class="nav-label">Backup</span>
+        </a>
+        {# TEMP: role restriction disabled for now — was: {% if current_user and current_user.role == 'admin' %} #}
+        {% if current_user %}
+        <a href="{{ url_for('users.user_management') }}" class="nav-link {{ 'active' if request.endpoint == 'users.user_management' }}">
+          <span class="nav-icon">&#128101;</span><span class="nav-label">User Management</span>
+        </a>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="{{ url_for('users.logout') }}" class="nav-link logout-link">
+          <span class="nav-icon">&#9099;</span><span class="nav-label">Logout</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main column -->
+    <div class="main-col">
+      <header class="topbar">
+        <button class="collapse-btn" id="collapseBtn" aria-label="Toggle sidebar">&#9776;</button>
+        <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
+        {% block topbar_extra %}{% endblock %}
+        {% if current_user %}
+        <div class="topbar-user">
+          <span class="user-badge">{{ current_user.role }}</span>
+          <span class="user-name">{{ current_user.name }}</span>
+        </div>
+        {% endif %}
+      </header>
+
+      <main class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category if category != 'message' else 'error' }}" data-flash>
+                  <span class="flash-text">{{ message }}</span>
+                  <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
+                </div>
+              {% endfor %}
+            </div>
+            <script>
+              (function () {
+                document.querySelectorAll('.flash-stack [data-flash]').forEach(function (el) {
+                  var timer = setTimeout(function () { dismiss(el); }, 4500);
+                  var closeBtn = el.querySelector('.flash-close');
+                  if (closeBtn) {
+                    closeBtn.addEventListener('click', function () {
+                      clearTimeout(timer);
+                      dismiss(el);
+                    });
+                  }
+                  function dismiss(node) {
+                    node.classList.add('flash-hide');
+                    node.addEventListener('transitionend', function () {
+                      node.remove();
+                    }, { once: true });
+                    // fallback in case transitionend doesn't fire
+                    setTimeout(function () { if (node.parentNode) node.remove(); }, 500);
+                  }
+                });
+              })();
+            </script>
+          {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Upload Data — FNRG Preaching{% endblock %}
+{% block page_title %}Upload Data{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Bulk-import sales from an Excel sheet instead of entering them one by one.</p>
+
+<section class="grid-2 align-start">
+  <div class="form-card">
+    <h3>Upload .xlsx</h3>
+    <form method="POST" action="{{ url_for('books.upload') }}" enctype="multipart/form-data" class="stacked-form">
+      <div class="dropzone" id="dropzone">
+        <span class="dropzone-icon">&#11014;</span>
+        <p><strong>Click to choose</strong> or drag an .xlsx file here</p>
+        <span id="fileName" class="dropzone-filename"></span>
+        <input type="file" id="file" name="file" accept=".xlsx,.xlsm" hidden required>
+      </div>
+      <button type="submit" class="btn-enter">Upload &amp; Import</button>
+    </form>
+  </div>
+
+  <div class="table-card">
+    <h3>Expected Format</h3>
+    <p class="hint-text">The first row must contain these column headers (any order):</p>
+    <ul class="pill-list">
+      {% for col in expected_columns %}<li class="pill">{{ col }}</li>{% endfor %}
+    </ul>
+    <table class="data-table small">
+      <thead>
+        <tr>{% for col in expected_columns %}<th>{{ col }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2026-07-01</td><td>Bhagavad Gita As It Is</td><td>Philosophy</td><td>arjun</td><td>3</td><td>100</td><td>130</td>
+        </tr>
+      </tbody>
+    </table>
+    <a href="{{ url_for('books.upload_sample') }}" class="link-download">Download a sample file &darr;</a>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("file");
+  const fileName = document.getElementById("fileName");
+
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", () => {
+    fileName.textContent = fileInput.files.length ? fileInput.files[0].name : "";
+  });
+
+  ["dragover", "dragleave", "drop"].forEach(evt => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.toggle("dragging", evt === "dragover");
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      fileName.textContent = e.dataTransfer.files[0].name;
+    }
+  });
+</script>
+{% endblock %}

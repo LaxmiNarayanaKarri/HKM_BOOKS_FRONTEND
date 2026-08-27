@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Backup — FNRG Preaching{% endblock %}
+{% block page_title %}Backup{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Download each of the last 7 days' records as a separate Excel file, for offline backup.</p>
+
+<section class="table-card">
+  <h3>Daily Backups</h3>
+  <table class="data-table">
+    <thead>
+      <tr><th>Date</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for d in days %}
+      <tr>
+        <td>{{ d.date }}{% if loop.first %} <span class="pill">Today</span>{% endif %}</td>
+        <td>
+          {% if d.has_records %}
+          <a href="{{ url_for('books.backup_download', day=d.date) }}" class="link-download">Download .xlsx &darr;</a>
+          {% else %}
+          <span class="hint-text">No records</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

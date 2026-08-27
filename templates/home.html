@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% from "_filters.html" import filter_bar %}
+{% block title %}Dashboard — FNRG Preaching{% endblock %}
+{% block page_title %}{{ 'Overview' if is_admin else 'My Dashboard' }}{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">
+  {{ 'Org-wide performance' if is_admin else 'Your book distribution performance' }} — {{ window_label }}
+</p>
+
+{{ filter_bar('', filters, is_admin, sellers, events) }}
+
+<section class="kpi-cluster">
+  <div class="kpi-item">
+    <span class="kpi-label">Number of Books Distributed</span>
+    <span class="kpi-value">{{ kpis.qty }}</span>
+  </div>
+  <div class="kpi-item kpi-accent-teal">
+    <span class="kpi-label">Total Cost of Books</span>
+    <span class="kpi-value">₹{{ "{:,.0f}".format(kpis.cost) }}</span>
+  </div>
+  <div class="kpi-item kpi-accent-teal">
+    <span class="kpi-label">Total Sales of Books</span>
+    <span class="kpi-value">₹{{ "{:,.0f}".format(kpis.revenue) }}</span>
+  </div>
+  <div class="kpi-item {{ 'kpi-accent-green' if net_pl >= 0 else 'kpi-accent-red' }}">
+    <span class="kpi-label">{{ 'Profit' if net_pl >= 0 else 'Loss' }}</span>
+    <span class="kpi-value">₹{{ "{:,.0f}".format(net_pl|abs) }}</span>
+    <span class="kpi-sub">{{ "{:+.1f}".format(pl_pct) }}%</span>
+  </div>
+  <div class="kpi-item kpi-accent-amber">
+    <span class="kpi-label">Stock In Hand</span>
+    <span class="kpi-value">{{ total_available }}</span>
+  </div>
+</section>
+
+{% if is_admin %}
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>Top Distributors</h3>
+    <a href="{{ url_for('books.export_leaderboard') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+  </div>
+
+  {{ filter_bar('dist_', filters, is_admin, sellers, events) }}
+
+  <div class="table-scroll-y rows-5">
+    <table class="data-table">
+      <thead>
+        <tr><th>S.No</th><th>Name</th><th>Amount Collected</th><th>Qty</th></tr>
+      </thead>
+      <tbody>
+        {% for row in leaderboard %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ row.seller }}</td>
+          <td>₹{{ "{:,.0f}".format(row.revenue) }}</td>
+          <td>{{ row.qty }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty-cell">No sales matched this filter.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>{{ 'My Top Books' if not is_admin else 'Top Books' }}</h3>
+    <a href="{{ url_for('books.export_top_books') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+  </div>
+
+  {{ filter_bar('books_', filters, is_admin, sellers, events) }}
+
+  <div class="table-scroll-y rows-5">
+    <table class="data-table">
+      <thead>
+        <tr><th>Title</th><th>Qty Distributed</th></tr>
+      </thead>
+      <tbody>
+        {% for b in my_top_books %}
+        <tr>
+          <td>{{ b.title }}</td>
+          <td>{{ b.qty }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2" class="empty-cell">No sales recorded yet — add one from Books &amp; Sell Entry.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>Book Inventory Updates {{ '(all sellers, all time)' if is_admin else '' }}</h3>
+    <div class="header-actions">
+      <a href="{{ url_for('books.export_inventory') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+      <div class="corner-badge">
+        <span class="corner-badge-label">Total Books Available</span>
+        <span class="corner-badge-value">{{ total_available }}</span>
+      </div>
+    </div>
+  </div>
+
+  {{ filter_bar('inv_', filters, is_admin, sellers, events) }}
+
+  <div class="table-scroll-y">
+    <table class="data-table table-align-center">
+      <thead>
+        <tr>
+          <th class="col-left">Book Name</th>
+          <th>Stock in Hand</th>
+          <th>Threshold</th>
+          <th>Avg Cost / Book</th>
+          <th>Avg Sell / Book</th>
+          <th>Profit or Loss</th>
+          <th>% Profit/Loss</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in inventory %}
+        <tr>
+          <td class="col-left">{{ b.title }}</td>
+          <td class="{{ 'text-red' if b.below_threshold else 'text-green' }}">
+            {{ b.available }}{% if b.below_threshold %} &#9888; low{% endif %}
+          </td>
+          <td>
+            <form method="POST" action="{{ url_for('books.master_data_update_threshold') }}" class="threshold-edit">
+              <input type="hidden" name="title" value="{{ b.title }}">
+              <input type="number" name="threshold" value="{{ b.threshold }}" min="0">
+              <button type="submit" class="btn-toggle">Save</button>
+            </form>
+          </td>
+          <td>₹{{ "{:,.2f}".format(b.avg_cost) }}</td>
+          <td>₹{{ "{:,.2f}".format(b.avg_sell) }}</td>
+          <td class="{{ 'text-green' if b.profit_or_loss >= 0 else 'text-red' }}">₹{{ "{:,.0f}".format(b.profit_or_loss) }}</td>
+          <td class="{{ 'text-green' if b.pl_pct >= 0 else 'text-red' }}">{{ "{:+.1f}".format(b.pl_pct) }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

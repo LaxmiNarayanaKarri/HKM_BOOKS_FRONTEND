@@ -1,0 +1,31 @@
+(function () {
+  var sidebar = document.getElementById("sidebar");
+  var btn = document.getElementById("collapseBtn");
+  var overlay = document.getElementById("sidebarOverlay");
+  if (!sidebar || !btn) return;
+
+  var COLLAPSED_CLASS = "collapsed";
+  var STORAGE_KEY = "fnrg_sidebar_collapsed";
+
+  function applyState(collapsed) {
+    sidebar.classList.toggle(COLLAPSED_CLASS, collapsed);
+  }
+
+  var saved = localStorage.getItem(STORAGE_KEY);
+  applyState(saved === "1");
+
+  btn.addEventListener("click", function () {
+    var collapsed = !sidebar.classList.contains(COLLAPSED_CLASS);
+    applyState(collapsed);
+    localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+  });
+
+  // Auto-collapse on small screens the first time, without overriding an
+  // explicit user choice already stored.
+  if (saved === null && window.innerWidth < 900) {
+    applyState(true);
+    localStorage.setItem(STORAGE_KEY, "1");
+  }
+})();
+
+

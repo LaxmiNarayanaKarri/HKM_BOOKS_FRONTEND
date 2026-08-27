@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Master Data — FNRG Preaching{% endblock %}
+{% block page_title %}Master Data{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Add and review the reference lists the rest of the app draws its dropdowns from — books, categories, languages, locations, and events.</p>
+
+<section class="stacked-sections">
+
+  <!-- Books (title + shorthand) -->
+  <div class="grid-2">
+    <div class="form-card">
+      <h3>Add Book</h3>
+      <form method="POST" action="{{ url_for('books.master_data_add_book') }}" class="stacked-form">
+        <div class="field-row-2">
+          <div class="field">
+            <label for="bookTitle">Book Name</label>
+            <input type="text" id="bookTitle" name="title" placeholder="e.g. Teachings of Lord Kapila" required>
+          </div>
+          <div class="field">
+            <label for="bookShort">Short Hand</label>
+            <input type="text" id="bookShort" name="short_title" placeholder="e.g. TLK" maxlength="40">
+          </div>
+        </div>
+        <div class="field">
+          <label for="bookThreshold">Threshold (min. stock to keep in hand)</label>
+          <input type="number" id="bookThreshold" name="threshold" placeholder="e.g. 10" min="0">
+        </div>
+        <button type="submit" class="btn-enter">Add Book</button>
+      </form>
+    </div>
+
+    <div class="table-card">
+      <h3>Books</h3>
+      <div class="table-scroll-y rows-5">
+        <table class="data-table table-align-center">
+          <thead>
+            <tr><th class="col-left">Book Name</th><th>Short Hand</th><th>Threshold</th></tr>
+          </thead>
+          <tbody>
+            {% if books %}
+              {% for b in books %}
+              <tr>
+                <td class="col-left">{{ b.title }}</td>
+                <td>{{ b.short_title or "—" }}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('books.master_data_update_threshold') }}" class="threshold-edit">
+                    <input type="hidden" name="title" value="{{ b.title }}">
+                    <input type="number" name="threshold" value="{{ b.threshold if b.threshold is defined else 10 }}" min="0">
+                    <button type="submit" class="btn-toggle">Save</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="3" class="empty-cell">No books added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Book categories -->
+  <div class="grid-2">
+    <div class="form-card">
+      <h3>Add Book Category</h3>
+      <form method="POST" action="{{ url_for('books.master_data_add_category') }}" class="stacked-form">
+        <div class="field">
+          <label for="categoryName">Category Name</label>
+          <input type="text" id="categoryName" name="name" placeholder="e.g. Children's Books" required>
+        </div>
+        <button type="submit" class="btn-enter">Add Category</button>
+      </form>
+    </div>
+
+    <div class="table-card">
+      <h3>Book Categories</h3>
+      <div class="table-scroll-y rows-5">
+        <table class="data-table">
+          <thead>
+            <tr><th>Category</th></tr>
+          </thead>
+          <tbody>
+            {% if categories %}
+              {% for c in categories %}
+              <tr><td>{{ c['name'] }}</td></tr>
+              {% endfor %}
+            {% else %}
+              <tr><td class="empty-cell">No categories added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Languages -->
+  <div class="grid-2">
+    <div class="form-card">
+      <h3>Add Language</h3>
+      <form method="POST" action="{{ url_for('books.master_data_add_language') }}" class="stacked-form">
+        <div class="field">
+          <label for="languageName">Language Name</label>
+          <input type="text" id="languageName" name="name" placeholder="e.g. Kannada" required>
+        </div>
+        <button type="submit" class="btn-enter">Add Language</button>
+      </form>
+    </div>
+
+    <div class="table-card">
+      <h3>Languages</h3>
+      <div class="table-scroll-y rows-5">
+        <table class="data-table">
+          <thead>
+            <tr><th>Language</th></tr>
+          </thead>
+          <tbody>
+            {% if languages %}
+              {% for l in languages %}
+              <tr><td>{{ l['name'] }}</td></tr>
+              {% endfor %}
+            {% else %}
+              <tr><td class="empty-cell">No languages added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Locations -->
+  <div class="grid-2">
+    <div class="form-card">
+      <h3>Add Location</h3>
+      <form method="POST" action="{{ url_for('books.master_data_add_location') }}" class="stacked-form">
+        <div class="field">
+          <label for="locationName">Location Name</label>
+          <input type="text" id="locationName" name="name" placeholder="e.g. Kukatpally Book Table" required>
+        </div>
+        <button type="submit" class="btn-enter">Add Location</button>
+      </form>
+    </div>
+
+    <div class="table-card">
+      <h3>Locations</h3>
+      <div class="table-scroll-y rows-5">
+        <table class="data-table">
+          <thead>
+            <tr><th>Location</th></tr>
+          </thead>
+          <tbody>
+            {% if locations %}
+              {% for loc in locations %}
+              <tr><td>{{ loc['name'] }}</td></tr>
+              {% endfor %}
+            {% else %}
+              <tr><td class="empty-cell">No locations added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Events -->
+  <div class="grid-2">
+    <div class="form-card">
+      <h3>Add Event</h3>
+      <form method="POST" action="{{ url_for('books.master_data_add_event') }}" class="stacked-form">
+        <div class="field">
+          <label for="eventName">Event Name</label>
+          <input type="text" id="eventName" name="name" placeholder="e.g. Janmashtami Festival" required>
+        </div>
+        <button type="submit" class="btn-enter">Add Event</button>
+      </form>
+    </div>
+
+    <div class="table-card">
+      <h3>Events</h3>
+      <div class="table-scroll-y rows-5">
+        <table class="data-table">
+          <thead>
+            <tr><th>Event</th></tr>
+          </thead>
+          <tbody>
+            {% if events %}
+              {% for e in events %}
+              <tr><td>{{ e['name'] }}</td></tr>
+              {% endfor %}
+            {% else %}
+              <tr><td class="empty-cell">No events added yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</section>
+{% endblock %}

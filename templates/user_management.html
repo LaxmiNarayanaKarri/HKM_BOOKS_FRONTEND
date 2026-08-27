@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}User Management — FNRG Preaching{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Add new sellers/admins and activate or deactivate accounts.</p>
+
+<section class="stacked-sections">
+  <div class="form-card">
+    <h3>Add User</h3>
+    <form method="POST" action="{{ url_for('users.user_management') }}" class="stacked-form">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" placeholder="e.g. gopal" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="At least 6 characters" minlength="6" required>
+      </div>
+      <div class="field">
+        <label for="role">Role</label>
+        <select id="role" name="role">
+          {% for r in roles %}
+          <option value="{{ r }}" {{ 'selected' if r == 'volunteer' }}>{{ r|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn-enter">Add User</button>
+    </form>
+  </div>
+
+  <div class="table-card">
+    <div class="card-header-row">
+      <h3>All Users</h3>
+      <a href="{{ url_for('users.export_users') }}" class="link-download">Download .xlsx &darr;</a>
+    </div>
+    <div class="table-scroll-y rows-5">
+    <table class="data-table">
+      <thead>
+        <tr><th>Username</th><th>Role</th><th>Status</th><th>Change Activation</th><th>Change Role</th><th>Change Password</th><th>Delete</th><th colspan="4"></th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td><span class="role-pill role-{{ u.role }}">{{ u.role }}</span></td>
+          <td><span class="status-dot status-{{ 'active' if u.active else 'inactive' }}"></span>{{ 'Active' if u.active else 'Inactive' }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('users.toggle_user', username=u.username) }}">
+              <button type="submit" class="btn-toggle">{{ 'Deactivate' if u.active else 'Activate' }}</button>
+            </form>
+          </td>
+          <td>
+            <details class="password-disclosure">
+              <summary class="btn-toggle">Change Role</summary>
+              <form method="POST" action="{{ url_for('users.change_role', username=u.username) }}" class="inline-password-form">
+                <select name="role">
+                  {% for r in roles %}
+                  <option value="{{ r }}" {{ 'selected' if r == u.role }}>{{ r|capitalize }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="btn-toggle">Save</button>
+              </form>
+            </details>
+          </td>
+          <td>
+            <details class="password-disclosure">
+              <summary class="btn-toggle">Change Password</summary>
+              <form method="POST" action="{{ url_for('users.change_password', username=u.username) }}" class="inline-password-form">
+                <input type="password" name="password" placeholder="New password" minlength="6" required>
+                <button type="submit" class="btn-toggle">Save</button>
+              </form>
+            </details>
+          </td>
+          <td>
+            {% if u.username != current_user.username %}
+            <form method="POST" action="{{ url_for('users.delete_user', username=u.username) }}" onsubmit="return confirm('Delete {{ u.name }} ({{ u.username }})? This cannot be undone.');">
+              <button type="submit" class="btn-toggle btn-danger">Delete</button>
+            </form>
+            {% else %}
+            <button type="button" class="btn-toggle btn-danger" disabled title="You can't delete your own account">Delete</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

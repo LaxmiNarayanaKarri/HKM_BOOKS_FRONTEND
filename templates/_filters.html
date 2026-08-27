@@ -1,0 +1,192 @@
+{#
+    filter_bar renders ONE section's filter form.
+
+    Its own fields are named:
+        "{prefix}date_from"
+        "{prefix}date_to"
+        "{prefix}seller"
+        "{prefix}event"
+
+    Submitting this form only changes this section's filters.
+
+    Every other section's current values are re-sent as hidden inputs
+    so they come back unchanged on the next page load.
+#}
+
+{% macro filter_bar(prefix, filters, is_admin, sellers, events) %}
+
+    {# Safely get the current filter section #}
+    {% set current = filters.get(prefix, {
+        'date_from': '',
+        'date_to': '',
+        'seller': 'all',
+        'event': 'all'
+    }) %}
+
+    <form method="GET"
+          action="{{ url_for('books.dashboard') }}"
+          class="filter-bar">
+
+        {# Preserve filters belonging to other sections #}
+        {% for other_prefix, other in filters.items() %}
+
+            {% if other_prefix != prefix %}
+
+                <input type="hidden"
+                       name="{{ other_prefix }}date_from"
+                       value="{{ other.date_from|default('') }}">
+
+                <input type="hidden"
+                       name="{{ other_prefix }}date_to"
+                       value="{{ other.date_to|default('') }}">
+
+                <input type="hidden"
+                       name="{{ other_prefix }}seller"
+                       value="{{ other.seller|default('all') }}">
+
+                <input type="hidden"
+                       name="{{ other_prefix }}event"
+                       value="{{ other.event|default('all') }}">
+
+            {% endif %}
+
+        {% endfor %}
+
+
+        {# Date From #}
+        <div class="field">
+
+            <label for="{{ prefix }}date_from">
+                From
+            </label>
+
+            <input
+                type="date"
+                id="{{ prefix }}date_from"
+                name="{{ prefix }}date_from"
+                value="{{ current.date_from|default('') }}"
+            >
+
+        </div>
+
+
+        {# Date To #}
+        <div class="field">
+
+            <label for="{{ prefix }}date_to">
+                To
+            </label>
+
+            <input
+                type="date"
+                id="{{ prefix }}date_to"
+                name="{{ prefix }}date_to"
+                value="{{ current.date_to|default('') }}"
+            >
+
+        </div>
+
+
+        {# Seller / User #}
+        <div class="field">
+
+            <label for="{{ prefix }}seller">
+                User
+            </label>
+
+            <select
+                id="{{ prefix }}seller"
+                name="{{ prefix }}seller"
+                {% if not is_admin %}disabled{% endif %}
+            >
+
+                {% if is_admin %}
+
+                    <option
+                        value="all"
+                        {% if current.seller|default('all') == 'all' %}
+                            selected
+                        {% endif %}
+                    >
+                        All Users
+                    </option>
+
+                    {% for s in sellers %}
+
+                        <option
+                            value="{{ s }}"
+                            {% if current.seller|default('all') == s %}
+                                selected
+                            {% endif %}
+                        >
+                            {{ s }}
+                        </option>
+
+                    {% endfor %}
+
+                {% else %}
+
+                    <option
+                        value="{{ current.seller|default('all') }}"
+                        selected
+                    >
+                        {{ current.seller|default('all') }}
+                    </option>
+
+                {% endif %}
+
+            </select>
+
+        </div>
+
+
+        {# Event #}
+        <div class="field">
+
+            <label for="{{ prefix }}event">
+                Event
+            </label>
+
+            <select
+                id="{{ prefix }}event"
+                name="{{ prefix }}event"
+            >
+
+                <option
+                    value="all"
+                    {% if current.event|default('all') == 'all' %}
+                        selected
+                    {% endif %}
+                >
+                    All Events
+                </option>
+
+                {% for e in events %}
+
+                    <option
+                        value="{{ e }}"
+                        {% if current.event|default('all') == e %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ e }}
+                    </option>
+
+                {% endfor %}
+
+            </select>
+
+        </div>
+
+
+        {# Submit #}
+        <button
+            type="submit"
+            class="btn-filter"
+        >
+            Apply Filters
+        </button>
+
+    </form>
+
+{% endmacro %}

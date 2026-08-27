@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FNRG Preaching</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="{{ url_for('static', filename='img/logo.svg') }}" alt="FNRG Preaching logo">
+    <h1 class="brand-title">FNRG Preaching</h1>
+    <p class="brand-subtitle">Sign in to continue</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="flash">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('users.login') }}">
+      <div class="field">
+        <label for="username">User Name</label>
+        <input type="text" id="username" name="username" autocomplete="username" required>
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+
+      <button type="submit" class="btn-enter">Enter</button>
+    </form>
+
+  </div>
+</body>
+</html>

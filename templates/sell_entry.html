@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+{% block title %}Books & Sell Entry — FNRG Preaching{% endblock %}
+{% block page_title %}Books &amp; Sell Entry{% endblock %}
+
+{% block topbar_extra %}
+<div class="topbar-total">
+  <span class="topbar-total-label">Total Laxmi</span>
+  <span class="topbar-total-value" id="grandTotal">₹{{ "{:,.0f}".format(my_sales | sum(attribute="sell_price")) }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<section class="form-card">
+  <h3>New Sale</h3>
+  <form method="POST" action="{{ url_for('books.sell_entry') }}" class="stacked-form" id="sellForm">
+
+    <div class="batch-meta cols-3">
+      <div class="field">
+        <label for="date">Distribution Date</label>
+        <input type="date" id="date" name="date" required>
+      </div>
+
+      <div class="field">
+        <label for="location">Location</label>
+        <select id="location" name="location" required>
+          <option value="" disabled selected>Select an location</option>
+          {% for l in locations %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="event">Event</label>
+        <select id="event" name="event" required>
+          <option value="" disabled selected>Select an event</option>
+          {% for l in events %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <!-- Repeatable book rows -->
+    <table class="rows-table" id="rowsTable">
+      <thead>
+        <tr>
+          <th class="col-book">Book Name</th>
+          <th class="col-avail">Available Stock</th>
+          <th class="col-price">Cost Price</th>
+          <th class="col-qty-sell">Qty</th>
+          <th class="col-qty-sell">Sell Price</th>
+          <th class="col-remove"></th>
+        </tr>
+      </thead>
+      <tbody id="rowsBody">
+        <!-- rows are cloned in here from #rowTemplate by sell_entry.js -->
+      </tbody>
+    </table>
+
+    <div class="row-actions">
+      <button type="button" class="btn-add-row" id="addRowBtn">+ Add Another Book</button>
+    </div>
+
+    <button type="submit" class="btn-enter" id="submitBtn">Submit</button>
+  </form>
+</section>
+
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>Sales History</h3>
+    <a href="{{ url_for('books.export_sell_entries') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+  </div>
+
+  <form method="GET" action="{{ url_for('books.sell_entry') }}" class="filter-bar" id="filterForm">
+    <div class="field">
+      <label for="se_user">User Name</label>
+      <select id="se_user" name="se_user">
+        <option value="all" {{ 'selected' if sale_filters.user == 'all' }}>All Users</option>
+        {% for u in users %}
+        <option value="{{ u['username'] }}" {{ 'selected' if sale_filters.user == u['username'] }}>{{ u['username'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="se_location">Location</label>
+      <select id="se_location" name="se_location">
+        <option value="all" {{ 'selected' if sale_filters.location == 'all' }}>All location</option>
+        {% for l in locations %}
+        <option value="{{ l['id'] }}" {{ 'selected' if sale_filters.location == l['id']|string }}>{{ l['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="se_event">Event</label>
+      <select id="se_event" name="se_event">
+        <option value="all" {{ 'selected' if sale_filters.event == 'all' }}>All events</option>
+        {% for e in events %}
+        <option value="{{ e['id'] }}" {{ 'selected' if sale_filters.event == e['id']|string }}>{{ e['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="se_date_from">From</label>
+      <input type="date" id="se_date_from" name="se_date_from" value="{{ sale_filters.date_from }}">
+    </div>
+    <div class="field">
+      <label for="se_date_to">To</label>
+      <input type="date" id="se_date_to" name="se_date_to" value="{{ sale_filters.date_to }}">
+    </div>
+    <button type="submit" class="btn-filter">Apply Filters</button>
+    {% if sale_filters.user != 'all' or sale_filters.event != 'all' or sale_filters.location != 'all' or sale_filters.date_from or sale_filters.date_to %}
+    <a href="{{ url_for('books.sell_entry') }}" class="btn-toggle" id="clearFiltersBtn">Clear</a>
+    {% endif %}
+  </form>
+
+  {% set total_qty = my_sales | sum(attribute="qty") %}
+  {% set total_sell_sum = my_sales | sum(attribute="sell_price") %}
+  <div class="table-scroll-y">
+    <table class="data-table" id="recentEntriesTable">
+      <thead>
+        <tr>
+          <th>Distribution Date</th>
+          <th>Book Name</th>
+          <th>Location</th>
+          <th>Event</th>
+          <th><span class="th-with-total">Qty<span class="col-total-sup" title="Total quantity across these rows">&Sigma;{{ total_qty }}</span></span></th>
+          <th><span class="th-with-total">Sell Price<span class="col-total-sup" title="Total sell value across these rows">&Sigma;&#8377;{{ "{:,.0f}".format(total_sell_sum) }}</span></span></th>
+          <th>Recorded By</th>
+        </tr>
+      </thead>
+      <tbody id="recentEntriesBody">
+        {% if my_sales %}
+          {% for s in my_sales %}
+          <tr>
+            <td>{{ s.date }}</td>
+            <td>{{ s.title }}</td>
+            <td>{{ s.location }}</td>
+            <td>{{ s.event }}</td>
+            <td>{{ s.qty }}</td>
+            <td>&#8377;{{ "{:,.0f}".format(s.sell_price) }}</td>
+            <td>{{ s.recorded_by_name or s.seller or "—" }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="7" class="empty-cell">No entries yet — add your first sale.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    <p class="empty-cell" id="noFilterMatch" style="display:none;">No entries match the current filters.</p>
+  </div>
+</section>
+
+<!-- Hidden template for one book row — cloned by JS for "Add Another Book" -->
+<template id="rowTemplate">
+  <tr class="book-row">
+    <td class="col-book" data-label="Book Name">
+      <select name="title[]" class="row-title" required>
+        <option value="" disabled selected>Select a book</option>
+        {% for t in book_titles %}<option value="{{ t['id'] }}">{{ t['title'] }} - {{ t['short_title'] }}</option>{% endfor %}
+      </select>
+    </td>
+    <td class="col-avail" data-label="Available Stock">
+      <div class="avail-field" data-role="avail">
+        <span class="avail-number">—</span>
+        <span class="avail-caption">in stock</span>
+      </div>
+    </td>
+    <td class="col-price" data-label="Cost Price">
+      <input type="number" name="cost_price[]" class="row-cost" min="0" step="0.01" required readonly>
+    </td>
+    <td class="col-qty-sell" data-label="Qty">
+        <input type="number" name="qty[]" class="row-qty" min="0" step="1" value="0" required
+                placeholder="Qty"></td>
+    <td class="col-qty-sell" data-label="Sell Price">
+        <input type="number" name="sell_price[]" class="row-sell" min="0" step="0.01" required
+                placeholder="Sell ₹">
+    </td>
+    <td class="col-remove">
+      <button type="button" class="btn-remove-row" title="Remove this book">&times;</button>
+    </td>
+  </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById("date").valueAsDate = new Date();
+
+  // Available stock per book id, e.g. {"7": 101, ...}. Reassigned after
+  // every refreshTable() call so it stays current post-submit/filter,
+  // not just at initial page load.
+  let BOOK_STOCK = {{ (book_stock | default({})) | tojson }};
+  // Current stock cost per book id, e.g. {"7": 400}. Same refresh story
+  // as BOOK_STOCK.
+  let BOOK_COST = {{ (book_cost | default({})) | tojson }};
+
+  const rowsBody = document.getElementById("rowsBody");
+  const rowTemplate = document.getElementById("rowTemplate");
+  const addRowBtn = document.getElementById("addRowBtn");
+  const grandTotalEl = document.getElementById("grandTotal");
+
+  function formatRupees(n) {
+    return "₹" + Math.round(n).toLocaleString("en-IN");
+  }
+
+  function rowTotal(row) {
+    const qty = parseFloat(row.querySelector(".row-qty").value) || 0;
+    const sell = parseFloat(row.querySelector(".row-sell").value) || 0;
+    return qty * sell;
+  }
+
+  function updateAvailability(row) {
+    const titleSelect = row.querySelector(".row-title");
+    const qtyInput = row.querySelector(".row-qty");
+    const costInput = row.querySelector(".row-cost");
+    const availField = row.querySelector('[data-role="avail"]');
+    const numberEl = availField.querySelector(".avail-number");
+    const bookId = titleSelect.value;
+    const available = BOOK_STOCK[bookId];
+    const cost = BOOK_COST[bookId];
+
+    if (bookId && available !== undefined) {
+      numberEl.textContent = available;
+      availField.classList.remove("empty");
+
+      const qty = parseFloat(qtyInput.value) || 0;
+      availField.classList.toggle("warn", qty > available && available >= 0);
+      availField.classList.toggle("low", available <= 5 && qty <= available);
+    } else {
+      numberEl.textContent = "—";
+      availField.classList.add("empty");
+      availField.classList.remove("warn", "low");
+    }
+
+    // Prefill cost price from the current stock record when a book is
+    // selected -- the seller can still edit it before submitting.
+    if (bookId && cost !== undefined) {
+      costInput.value = cost;
+    }
+  }
+
+  // Live preview of the *unsaved* New Sale rows only — purely a helper
+  // while filling the form. This gets overwritten with the real recorded
+  // total (from the table) as soon as refreshTable() runs — see
+  // updateGrandTotalFromEntries below.
+  function updateGrandTotal() {
+    let grand = 0;
+    rowsBody.querySelectorAll(".book-row").forEach(row => {
+      grand += rowTotal(row);
+    });
+    grandTotalEl.textContent = formatRupees(grand);
+  }
+
+  function wireRow(row) {
+    row.querySelector(".row-title").addEventListener("change", () => {
+      updateAvailability(row);
+    });
+    row.querySelector(".row-qty").addEventListener("input", () => {
+      updateAvailability(row);
+      updateGrandTotal();
+    });
+    row.querySelector(".row-sell").addEventListener("input", updateGrandTotal);
+    row.querySelector(".btn-remove-row").addEventListener("click", () => {
+      // Always keep at least one row so the form has something to submit.
+      if (rowsBody.querySelectorAll(".book-row").length > 1) {
+        row.remove();
+        updateGrandTotal();
+      }
+    });
+  }
+
+  function addRow() {
+    const fragment = rowTemplate.content.cloneNode(true);
+    const row = fragment.querySelector(".book-row");
+    rowsBody.appendChild(fragment);
+    wireRow(row);
+  }
+
+  addRowBtn.addEventListener("click", addRow);
+
+  // Start with one row ready to fill in.
+  addRow();
+
+  // ── Flash banner (same helper as inward_stock.html) ────────────────────
+  function showFlash(msg, category) {
+    let container = document.querySelector(".flash-messages");
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "flash-messages";
+      (document.querySelector("main") || document.body).prepend(container);
+    }
+    const div = document.createElement("div");
+    div.className = `flash ${category}`;
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
+  }
+
+  // ── My Recent Entries: server-side filter + AJAX refresh ───────────────
+  const filterForm         = document.getElementById("filterForm");
+  const recentEntriesBody  = document.getElementById("recentEntriesBody");
+  const noFilterMatch      = document.getElementById("noFilterMatch");
+
+  function fmt(n)    { return Number(n).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+  function fmtInt(n) { return Number(n).toLocaleString("en-IN"); }
+
+  function updateEntryTotals(qty, sellSum) {
+    const thQty  = document.querySelector("#recentEntriesTable th:nth-child(5) .col-total-sup");
+    const thSell = document.querySelector("#recentEntriesTable th:nth-child(6) .col-total-sup");
+    if (thQty)  thQty.textContent  = `\u03A3${fmtInt(qty)}`;
+    if (thSell) thSell.textContent = `\u03A3\u20B9${fmtInt(sellSum)}`;
+    // Keep the topbar "Total Laxmi" in sync with the actual recorded total
+    // shown in this table — this is what fires right after a submit too,
+    // via refreshTable() -> renderEntriesTable() -> here.
+    grandTotalEl.textContent = formatRupees(sellSum);
+  }
+
+  function showTableLoading() {
+    recentEntriesBody.innerHTML =
+      `<tr class="loading-row"><td colspan="7" class="empty-cell">
+         <span class="table-spinner" aria-hidden="true"></span> Loading entries…
+       </td></tr>`;
+    if (noFilterMatch) noFilterMatch.style.display = "none";
+  }
+
+  function renderEntriesTable(sales) {
+    if (!sales || sales.length === 0) {
+      recentEntriesBody.innerHTML =
+        `<tr><td colspan="7" class="empty-cell">No entries yet — add your first sale.</td></tr>`;
+      updateEntryTotals(0, 0);
+      if (noFilterMatch) {
+        noFilterMatch.style.display = filterFormIsActive() ? "" : "none";
+      }
+      return;
+    }
+
+    recentEntriesBody.innerHTML = sales.map(s => `
+      <tr>
+        <td>${s.date              || "—"}</td>
+        <td>${s.title             || "—"}</td>
+        <td>${s.location          || "—"}</td>
+        <td>${s.event             || "—"}</td>
+        <td>${s.qty               ?? "—"}</td>
+        <td>&#8377;${fmt(s.sell_price)}</td>
+        <td>${s.recorded_by_name  || s.seller || "—"}</td>
+      </tr>`).join("");
+
+    const totalQty  = sales.reduce((sum, s) => sum + (Number(s.qty)        || 0), 0);
+    const totalSell = sales.reduce((sum, s) => sum + (Number(s.sell_price) || 0), 0);
+    updateEntryTotals(totalQty, totalSell);
+    if (noFilterMatch) noFilterMatch.style.display = "none";
+  }
+
+  function filterFormIsActive() {
+    if (!filterForm) return false;
+    const data = new FormData(filterForm);
+    for (const [key, val] of data.entries()) {
+      if (!val) continue;
+      if ((key === "se_user" || key === "se_event") && val === "all") continue;
+      return true;
+    }
+    return false;
+  }
+
+  function buildFilterParams() {
+    const params = new URLSearchParams();
+    params.set("ajax", "1");
+    if (filterForm) {
+      new FormData(filterForm).forEach((val, key) => {
+        if (val && val !== "") params.set(key, val);
+      });
+    }
+    return params;
+  }
+
+  async function refreshTable() {
+    showTableLoading();
+    try {
+      const params = buildFilterParams();
+      const res    = await fetch(`${window.location.pathname}?${params}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      if (data.ok) {
+        // Keep Available Stock / Cost Price current -- a sale (or
+        // anyone else's, if this page is left open) changes `stock`,
+        // so the values baked in at page load go stale otherwise.
+        if (data.book_stock) BOOK_STOCK = data.book_stock;
+        if (data.book_cost)  BOOK_COST  = data.book_cost;
+        rowsBody.querySelectorAll(".book-row").forEach(updateAvailability);
+
+        renderEntriesTable(data.my_sales);
+      } else {
+        showFlash(data.message || "Could not refresh table.", "danger");
+        renderEntriesTable([]);
+      }
+    } catch (err) {
+      console.error("[FNRG] refreshTable error:", err);
+      showFlash("Could not refresh table: " + err.message, "danger");
+      renderEntriesTable([]);
+    }
+  }
+
+  if (filterForm) {
+    filterForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const applyBtn = filterForm.querySelector(".btn-filter");
+      if (applyBtn) applyBtn.disabled = true;
+      await refreshTable();
+      if (applyBtn) applyBtn.disabled = false;
+    });
+
+    const clearBtn = document.getElementById("clearFiltersBtn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        filterForm.reset();
+        filterForm.querySelectorAll("select").forEach(sel => {
+          const allOpt = [...sel.options].find(o => o.value === "all");
+          if (allOpt) sel.value = "all";
+        });
+        clearBtn.classList.add("disabled");
+        await refreshTable();
+        clearBtn.classList.remove("disabled");
+      });
+    }
+  }
+
+  // ── New Sale form: async submit (mirrors inward_stock.html's purchaseForm) ─
+  const sellForm = document.getElementById("sellForm");
+  const submitBtn = document.getElementById("submitBtn");
+
+  sellForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    submitBtn.disabled    = true;
+    submitBtn.textContent = "Saving…";
+
+    try {
+      const res = await fetch(`${sellForm.action}?ajax=1`, {
+        method: "POST",
+        body:   new FormData(sellForm),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error ${res.status} — response was not JSON`);
+      }
+
+      if (!res.ok || !data.ok) throw new Error(data.message || `Server error ${res.status}`);
+
+      // Reset entry form: today's date, one fresh blank row, event back to placeholder
+      sellForm.reset();
+      document.getElementById("date").valueAsDate = new Date();
+      rowsBody.innerHTML = "";
+      addRow();
+      updateGrandTotal();
+
+      // Refresh the table in-place — this also resyncs "Total Laxmi" to the
+      // real recorded total via renderEntriesTable() -> updateEntryTotals().
+      await refreshTable();
+      showFlash(data.message || "Sale recorded.", "success");
+
+    } catch (err) {
+      console.error("[FNRG] submit error:", err);
+      showFlash(err.message, "danger");
+    } finally {
+      submitBtn.disabled    = false;
+      submitBtn.textContent = "Submit";
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,855 @@
+{% extends "base.html" %}
+{% block title %}Inward Stock — FNRG Preaching{% endblock %}
+{% block page_title %}Inward Stock{% endblock %}
+
+{% block content %}
+<p class="content-subtitle">Record books coming into stock from a purchase, printer order, or donation.</p>
+
+<div class="row-actions">
+  <button type="button" class="btn-add-row" id="addBookBtn">+ Add New Book</button>
+</div>
+
+<section class="form-card">
+  <h3>New Purchase</h3>
+  <form class="stacked-form" id="purchaseForm" method="POST" action="{{ url_for('books.inward_stock_submit') }}">
+
+    <div class="batch-meta cols-2">
+      <div class="field">
+        <label for="purchaseDate">Purchase Date</label>
+        <input type="date" id="purchaseDate" name="purchase_date" required>
+      </div>
+      <div class="field">
+        <label for="source">Source Purchased From</label>
+        <select id="source" name="source" required>
+          <option value="" disabled selected>Select a source</option>
+          {% for s in sources %}<option value="{{ s['id'] }}">{{ s['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="table-scroll-x">
+      <table class="rows-table" id="rowsTable">
+        <thead>
+          <tr>
+            <th class="col-book">Book Title</th>
+            <th class="col-short">Short Title</th>
+            <th class="col-lang">Language</th>
+            <th class="col-cat">Category</th>
+            <th class="col-qty">Qty Purchased</th>
+            <th class="col-price">Cost / Unit</th>
+            <th class="col-remove"></th>
+          </tr>
+        </thead>
+        <tbody id="rowsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="row-actions">
+      <button type="button" class="btn-add-row" id="addRowBtn">+ Add Another Book</button>
+      <button type="button" class="btn-add-row" id="addSourceBtn">+ Add Source</button>
+    </div>
+
+    <button type="submit" class="btn-enter" id="submitBtn">Submit</button>
+  </form>
+</section>
+
+<section class="table-card">
+  <div class="card-header-row">
+    <h3>Recent Purchases</h3>
+    <a href="{{ url_for('books.export_inward_stock') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+  </div>
+
+  <form method="GET" action="{{ url_for('books.inward_stock') }}" class="filter-bar" id="filterForm">
+    <div class="field">
+      <label for="pf_recorded_by">Recorded By</label>
+      <select id="pf_recorded_by" name="pf_recorded_by">
+        <option value="all" {{ 'selected' if purchase_filters.recorded_by == 'all' }}>All Users</option>
+        {% for r in users %}
+        <option value="{{ r.username }}" {{ 'selected' if purchase_filters.recorded_by == r.username }}>{{ r.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="pf_book">Book Name</label>
+      <select id="pf_book" name="pf_book">
+        <option value="all" {{ 'selected' if purchase_filters.book == 'all' }}>All Books</option>
+        {% for t in book_catalog %}
+        <option value="{{ t.id }}" {{ 'selected' if purchase_filters.book == t.title }}>{{ t['title'] }} - {{ t['short_title'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="pf_date_from">From</label>
+      <input type="date" id="pf_date_from" name="pf_date_from" value="{{ purchase_filters.date_from }}">
+    </div>
+    <div class="field">
+      <label for="pf_date_to">To</label>
+      <input type="date" id="pf_date_to" name="pf_date_to" value="{{ purchase_filters.date_to }}">
+    </div>
+    <button type="submit" class="btn-filter">Apply Filters</button>
+    {% if purchase_filters.recorded_by != 'all' or purchase_filters.book != 'all' or purchase_filters.date_from or purchase_filters.date_to %}
+    <a href="{{ url_for('books.inward_stock') }}" class="btn-toggle" id="clearFiltersBtn">Clear</a>
+    {% endif %}
+  </form>
+
+  {% set total_qty = recent_purchases | sum(attribute="qty") %}
+  {% set total_cost_sum = recent_purchases | sum(attribute="total_cost") %}
+  <div class="table-scroll-y">
+    <table class="data-table" id="recentPurchasesTable">
+      <thead>
+        <tr>
+          <th>Purchase Date</th>
+          <th>Book Title</th>
+          <th>Short Title</th>
+          <th>Category</th>
+          <th>Language</th>
+          <th>Source</th>
+          <th class="th-with-total">Qty<span class="col-total-sup" title="Total quantity across these rows">&Sigma;{{ total_qty }}</span></th>
+          <th>Cost/Unit</th>
+          <th class="th-with-total">Total Cost<span class="col-total-sup" title="Total cost across these rows">&Sigma;&#8377;{{ "{:,.0f}".format(total_cost_sum) }}</span></th>
+          <th>Recorded By</th>
+        </tr>
+      </thead>
+      <tbody id="recentPurchasesBody">
+        {% if recent_purchases %}
+          {% for p in recent_purchases %}
+          <tr>
+            <td>{{ p.date }}</td>
+            <td>{{ p.title }}</td>
+            <td>{{ p.short_title or "—" }}</td>
+            <td>{{ p.category }}</td>
+            <td>{{ p.language }}</td>
+            <td>{{ p.source }}</td>
+            <td>{{ p.qty }}</td>
+            <td>&#8377;{{ "{:,.2f}".format(p.cost_price) }}</td>
+            <td>&#8377;{{ "{:,.2f}".format(p.total_cost) }}</td>
+            <td>{{ p.recorded_by_name or p.recorded_by or "—" }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="10" class="empty-cell">No purchases matched this filter.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Row template -->
+<template id="rowTemplate">
+  <tr class="book-row">
+    <td class="col-book" data-label="Book Title">
+      <select class="row-title" required>
+        <option value="" disabled selected>Select a book</option>
+        {% for b in book_catalog %}<option value="{{ b.id }}">{{ b['title'] }} - {{ b['short_title'] }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="book_id[]" class="row-title-hidden">
+    </td>
+    <td class="col-short" data-label="Short Title">
+      <input type="text" class="row-short" placeholder="Auto-filled" disabled>
+      <input type="hidden" name="short[]" class="row-short-hidden">
+    </td>
+    <td class="col-lang" data-label="Language">
+      <input type="text" class="row-lang" placeholder="Auto-filled" disabled>
+      <input type="hidden" name="language[]" class="row-lang-hidden">
+    </td>
+    <td class="col-cat" data-label="Category">
+      <input type="text" class="row-cat" placeholder="Auto-filled" disabled>
+      <input type="hidden" name="category[]" class="row-cat-hidden">
+    </td>
+    <td class="col-qty" data-label="Qty Purchased">
+      <input type="number" name="qty[]" class="row-qty" min="0" step="1" value="0" required>
+    </td>
+    <td class="col-price" data-label="Cost / Unit">
+      <input type="number" name="cost[]" class="row-cost" placeholder="e.g. 95" min="0" step="0.01" required>
+    </td>
+    <td class="col-remove">
+      <button type="button" class="btn-remove-row" title="Remove this book">&times;</button>
+    </td>
+  </tr>
+</template>
+
+<!-- Add New Book modal -->
+<div class="modal-overlay" id="addBookOverlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Add New Book</h3>
+      <button type="button" class="modal-close" data-close-modal="addBookOverlay">&times;</button>
+    </div>
+    <p class="hint-text">Adds this title to the dropdowns above so it can be purchased right away.</p>
+    <form id="addBookForm" class="stacked-form" method="POST" action="{{ url_for('books.master_data_add_book') }}">
+      <div class="field">
+        <label for="newTitle">Book Title</label>
+        <input type="text" id="newTitle" name="title" placeholder="e.g. Teachings of Lord Kapila" required>
+      </div>
+      <div class="field">
+        <label for="newShort">Short Title</label>
+        <input type="text" id="newShort" name="short_title" placeholder="e.g. TLK" maxlength="40">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="newLang">Default Language</label>
+          <select id="newLang" name="language" required>
+            <option value="" disabled selected>Select a language</option>
+            {% for l in languages %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="newCat">Category</label>
+          <select id="newCat" name="category" required>
+            <option value="" disabled selected>Select a category</option>
+            {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="newThreshold">Low-Stock Threshold <span class="hint-text">(optional)</span></label>
+        <input type="number" id="newThreshold" name="threshold" placeholder="e.g. 10" min="0" step="1">
+      </div>
+      <div class="row-actions">
+        <button type="button" class="btn-add-row" id="addLangCatBtn">+ Add Language / Category</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-toggle" id="cancelAddBook">Cancel</button>
+        <button type="submit" class="btn-enter">Save Book</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Language / Category modal -->
+<div class="modal-overlay" id="addLangCatOverlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3 id="addLangCatTitle">Add Language / Category</h3>
+      <button type="button" class="modal-close" data-close-modal="addLangCatOverlay">&times;</button>
+    </div>
+    <div class="type-toggle" role="radiogroup" aria-label="What are you adding?">
+      <label class="type-toggle-option">
+        <input type="radio" name="langCatType" value="language" checked>
+        <span>Language</span>
+      </label>
+      <label class="type-toggle-option">
+        <input type="radio" name="langCatType" value="category">
+        <span>Category</span>
+      </label>
+    </div>
+    <form method="POST" id="addLangCatForm" class="modal-form"
+          action="{{ url_for('books.master_data_add_language') }}">
+      <div class="field">
+        <label for="newLangCatName" id="newLangCatLabel">Language name</label>
+        <input type="text" id="newLangCatName" name="name" required placeholder="e.g. Telugu">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-toggle" data-close-modal="addLangCatOverlay">Cancel</button>
+        <button type="submit" class="btn-enter" id="addLangCatSubmit">Save Language</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Source modal -->
+<div class="modal-overlay" id="addSourceOverlay">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Add Source</h3>
+      <button type="button" class="modal-close" data-close-modal="addSourceOverlay">&times;</button>
+    </div>
+    <p class="hint-text">Adds this source to the dropdown above so it can be selected right away.</p>
+    <form method="POST" id="addSourceForm" class="modal-form"
+          action="{{ url_for('books.master_data_add_source') }}">
+      <div class="field">
+        <label for="newSourceName">Source name</label>
+        <input type="text" id="newSourceName" name="name" required placeholder="e.g. BBT Chennai Press">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-toggle" data-close-modal="addSourceOverlay">Cancel</button>
+        <button type="submit" class="btn-enter">Save Source</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  /* ── Submit-button loader (dark green / light green) ──────────────────── */
+  #submitBtn, .btn-filter, .btn-enter {
+    position: relative;
+    transition: background-color 0.15s ease;
+  }
+  .btn-loading {
+    color: transparent !important;
+    pointer-events: none;
+    background-color: #1b5e20 !important; /* dark green */
+    border-color: #1b5e20 !important;
+  }
+  .btn-loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-radius: 50%;
+    border: 3px solid #a5d6a7;        /* light green track */
+    border-top-color: #ffffff;        /* bright edge so it reads on dark green */
+    animation: btn-spin 0.65s linear infinite;
+  }
+  @keyframes btn-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Init ──────────────────────────────────────────────────────────────────
+  document.getElementById("purchaseDate").valueAsDate = new Date();
+
+  const BOOK_CATALOG = {{ book_catalog | tojson }};
+  const BOOK_META = {};
+  BOOK_CATALOG.forEach(b => {
+    const id = String(b.id);
+    const title = (b.title || "").trim();
+    if (!id || !title) return;
+    BOOK_META[id] = {
+      title:     title,
+      shorthand: b.short_title || title.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 40),
+      category:  b.category  || "",
+      language:  b.language  || "English",
+    };
+  });
+
+  // ── Row management ────────────────────────────────────────────────────────
+  const rowsBody    = document.getElementById("rowsBody");
+  const rowTemplate = document.getElementById("rowTemplate");
+  const addRowBtn   = document.getElementById("addRowBtn");
+
+  function wireRow(row) {
+    const titleSelect  = row.querySelector(".row-title");
+    const titleHidden  = row.querySelector(".row-title-hidden");
+    const shortDisplay = row.querySelector(".row-short");
+    const shortHidden  = row.querySelector(".row-short-hidden");
+    const langDisplay  = row.querySelector(".row-lang");
+    const langHidden   = row.querySelector(".row-lang-hidden");
+    const catDisplay   = row.querySelector(".row-cat");
+    const catHidden    = row.querySelector(".row-cat-hidden");
+
+    titleSelect.addEventListener("change", () => {
+      const key  = (titleSelect.value || "").trim();
+      const meta = BOOK_META[key];
+      if (!meta) console.warn(`[FNRG] No BOOK_META for id "${key}"`, BOOK_CATALOG);
+      titleHidden.value  = key;
+      shortDisplay.value = meta ? meta.shorthand : "";
+      shortHidden.value  = meta ? meta.shorthand : "";
+      langDisplay.value  = meta ? meta.language  : "";
+      langHidden.value   = meta ? meta.language  : "";
+      catDisplay.value   = meta ? meta.category  : "";
+      catHidden.value    = meta ? meta.category  : "";
+    });
+
+    row.querySelector(".btn-remove-row").addEventListener("click", () => {
+      if (rowsBody.querySelectorAll(".book-row").length > 1) row.remove();
+    });
+  }
+
+  function addRow() {
+    const fragment = rowTemplate.content.cloneNode(true);
+    const row      = fragment.querySelector(".book-row");
+    rowsBody.appendChild(fragment);
+    wireRow(row);
+  }
+
+  addRowBtn.addEventListener("click", addRow);
+  addRow(); // seed one blank row on load
+
+  // ── Table helpers ─────────────────────────────────────────────────────────
+  const recentPurchasesBody = document.getElementById("recentPurchasesBody");
+
+  function fmt(n)    { return Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtInt(n) { return Number(n).toLocaleString("en-IN"); }
+
+  function updateTotals(qty, cost) {
+    const thQty  = document.querySelector("#recentPurchasesTable th:nth-child(7) .col-total-sup");
+    const thCost = document.querySelector("#recentPurchasesTable th:nth-child(9) .col-total-sup");
+    if (thQty)  thQty.textContent  = `\u03A3${fmtInt(qty)}`;
+    if (thCost) thCost.textContent = `\u03A3\u20B9${fmtInt(cost)}`;
+  }
+
+  function renderPurchasesTable(purchases) {
+    if (!purchases || purchases.length === 0) {
+      recentPurchasesBody.innerHTML =
+        `<tr><td colspan="10" class="empty-cell">No purchases matched this filter.</td></tr>`;
+      updateTotals(0, 0);
+      return;
+    }
+
+    // Inspect the first row in DevTools to confirm field names from your API
+    console.log("[FNRG] purchase row sample:", purchases[0]);
+
+    recentPurchasesBody.innerHTML = purchases.map(p => `
+      <tr>
+        <td>${p.date             || "—"}</td>
+        <td>${p.title            || "—"}</td>
+        <td>${p.short_title      || "—"}</td>
+        <td>${p.category         || "—"}</td>
+        <td>${p.language         || "—"}</td>
+        <td>${p.source           || "—"}</td>
+        <td>${p.qty              ?? "—"}</td>
+        <td>&#8377;${fmt(p.cost_price)}</td>
+        <td>&#8377;${fmt(p.total_cost)}</td>
+        <td>${p.recorded_by_name || p.recorded_by || "—"}</td>
+      </tr>`).join("");
+
+    const totalQty  = purchases.reduce((s, p) => s + (Number(p.qty)        || 0), 0);
+    const totalCost = purchases.reduce((s, p) => s + (Number(p.total_cost) || 0), 0);
+    updateTotals(totalQty, totalCost);
+  }
+
+  // ── Filter params: read the actual filter form, not window.location.search ─
+  const filterForm = document.getElementById("filterForm");
+
+  function buildFilterParams() {
+    const params = new URLSearchParams();
+    params.set("ajax", "1");
+    if (filterForm) {
+      new FormData(filterForm).forEach((val, key) => {
+        if (val && val !== "") params.set(key, val);
+      });
+    }
+    return params;
+  }
+
+  function showTableLoading() {
+    recentPurchasesBody.innerHTML =
+      `<tr class="loading-row"><td colspan="10" class="empty-cell">
+         <span class="table-spinner" aria-hidden="true"></span> Loading purchases…
+       </td></tr>`;
+  }
+
+  async function refreshTable() {
+    showTableLoading();
+    try {
+      const params = buildFilterParams();
+      const res    = await fetch(`${window.location.pathname}?${params}`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      console.log("[FNRG] refreshTable:", data);
+      if (data.ok) {
+        renderPurchasesTable(data.recent_purchases);
+      } else {
+        showFlash(data.message || "Could not refresh table.", "danger");
+        renderPurchasesTable([]); // clear the loading row on failure too
+      }
+    } catch (err) {
+      console.error("[FNRG] refreshTable error:", err);
+      showFlash("Could not refresh table: " + err.message, "danger");
+      renderPurchasesTable([]);
+    }
+  }
+
+  // ── Purchase form: async submit ───────────────────────────────────────────
+  const purchaseForm = document.getElementById("purchaseForm");
+  const submitBtn    = document.getElementById("submitBtn");
+
+  purchaseForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.classList.add("btn-loading");
+
+    try {
+      const res = await fetch(`${purchaseForm.action}?ajax=1`, {
+        method: "POST",
+        body:   new FormData(purchaseForm),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error ${res.status} — response was not JSON`);
+      }
+
+      if (!res.ok || !data.ok) throw new Error(data.message || `Server error ${res.status}`);
+
+      // Reset entry form: today's date, one fresh blank row, source back to placeholder
+      purchaseForm.reset();
+      document.getElementById("purchaseDate").valueAsDate = new Date();
+      rowsBody.innerHTML = "";
+      addRow();
+
+      // Refresh the table in-place using current filter form values
+      await refreshTable();
+      showFlash(data.message || "Purchase recorded.", "success");
+
+    } catch (err) {
+      console.error("[FNRG] submit error:", err);
+      showFlash(err.message, "danger");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove("btn-loading");
+    }
+  });
+
+  // ── Filter form: async apply ──────────────────────────────────────────────
+  if (filterForm) {
+    filterForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const applyBtn = filterForm.querySelector(".btn-filter");
+      if (applyBtn) { applyBtn.disabled = true; applyBtn.classList.add("btn-loading"); }
+      await refreshTable();
+      if (applyBtn) { applyBtn.disabled = false; applyBtn.classList.remove("btn-loading"); }
+    });
+
+    // Wire the Clear link to also reset and refresh without reloading
+    const clearBtn = document.getElementById("clearFiltersBtn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        filterForm.reset();
+        // Reset selects that have a default "all" value
+        filterForm.querySelectorAll("select").forEach(sel => {
+          const allOpt = [...sel.options].find(o => o.value === "all");
+          if (allOpt) sel.value = "all";
+        });
+        clearBtn.classList.add("disabled");
+        await refreshTable();
+        clearBtn.classList.remove("disabled");
+      });
+    }
+  }
+
+  // ── Flash banner (uses your existing .flash / .flash-messages CSS) ────────
+  function showFlash(msg, category) {
+    let container = document.querySelector(".flash-messages");
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "flash-messages";
+      (document.querySelector("main") || document.body).prepend(container);
+    }
+    const div = document.createElement("div");
+    div.className = `flash ${category}`;
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
+  }
+
+  // ── Master data refresh (books / languages / categories / sources) ────────
+  // Rebuilds a <select>'s options from a fresh list, keeping its current
+  // selection if it still exists, or applying an explicit override value
+  // (used to auto-select something just added).
+  function rebuildSelectOptions(selectEl, items, valueFn, labelFn, placeholder, overrideValue) {
+    if (!selectEl) return;
+    const keepValue = overrideValue !== undefined ? String(overrideValue) : selectEl.value;
+    selectEl.innerHTML =
+      `<option value="" disabled ${keepValue ? "" : "selected"}>${placeholder}</option>` +
+      items.map(item => `<option value="${valueFn(item)}">${labelFn(item)}</option>`).join("");
+    if (keepValue && [...selectEl.options].some(o => o.value === keepValue)) {
+      selectEl.value = keepValue;
+    }
+  }
+
+  function bookLabel(b)  { return `${b.title} - ${b.short_title || ""}`; }
+  function bookValue(b)  { return b.id; }
+
+  // Given a candidate override (which may be an id OR a name, since some
+  // "add" endpoints only return a name), find the matching item in the
+  // fresh list and return its true value-field so selection works either way.
+  function resolveOverrideValue(items, valueFn, labelFn, override) {
+    if (override === undefined || override === null) return undefined;
+    const match = items.find(item =>
+      String(valueFn(item)) === String(override) || labelFn(item) === override
+    );
+    return match ? String(valueFn(match)) : undefined;
+  }
+
+  // Pulls the latest sources / book_catalog / languages / categories from the
+  // server and syncs every dropdown that depends on them, so a newly added
+  // book, language, category, or source shows up immediately without a
+  // full page reload and without losing whatever else the user was doing.
+  async function refreshMasterData(overrides = {}) {
+    try {
+      const res = await fetch(`{{ url_for('books.inward_stock') }}?ajax=1&master=1`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || "Could not refresh dropdown data.");
+
+      if (Array.isArray(data.book_catalog)) {
+        BOOK_CATALOG.length = 0;
+        data.book_catalog.forEach(b => BOOK_CATALOG.push(b));
+
+        Object.keys(BOOK_META).forEach(k => delete BOOK_META[k]);
+        BOOK_CATALOG.forEach(b => {
+          const id    = String(b.id);
+          const title = (b.title || "").trim();
+          if (!id || !title) return;
+          BOOK_META[id] = {
+            title:     title,
+            shorthand: b.short_title || title.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 40),
+            category:  b.category  || "",
+            language:  b.language  || "English",
+          };
+        });
+
+        // overrides.book may be an id, a title, or undefined — resolve it
+        // against the fresh catalog so selection works regardless of which
+        // the "add book" endpoint actually returned.
+        const bookOverrideValue = resolveOverrideValue(BOOK_CATALOG, bookValue, b => b.title, overrides.book);
+
+        // Update the row template so future "+ Add Another Book" rows see the new book
+        rebuildSelectOptions(
+          rowTemplate.content.querySelector(".row-title"),
+          BOOK_CATALOG, bookValue, bookLabel, "Select a book", bookOverrideValue
+        );
+        // Update any book selects already on the page
+        document.querySelectorAll(".row-title").forEach(sel => {
+          rebuildSelectOptions(sel, BOOK_CATALOG, bookValue, bookLabel, "Select a book");
+        });
+        // Update the "Book Name" filter dropdown
+        rebuildSelectOptions(
+          document.getElementById("pf_book"),
+          BOOK_CATALOG, bookValue, bookLabel, "All Books"
+        );
+      }
+
+      if (Array.isArray(data.sources)) {
+        const sourceOverride = resolveOverrideValue(data.sources, s => s.id, s => s.name, overrides.source);
+        rebuildSelectOptions(
+          document.getElementById("source"),
+          data.sources, s => s.id, s => s.name, "Select a source", sourceOverride
+        );
+      }
+      if (Array.isArray(data.languages)) {
+        // overrides.language may be a name (from the add-language response,
+        // which has no id) rather than an id — resolve it to the matching
+        // option's actual value so selection still works either way.
+        const langOverride = resolveOverrideValue(data.languages, l => l.id, l => l.name, overrides.language);
+        rebuildSelectOptions(
+          document.getElementById("newLang"),
+          data.languages, l => l.id, l => l.name, "Select a language", langOverride
+        );
+      }
+      if (Array.isArray(data.categories)) {
+        const catOverride = resolveOverrideValue(data.categories, c => c.id, c => c.name, overrides.category);
+        rebuildSelectOptions(
+          document.getElementById("newCat"),
+          data.categories, c => c.id, c => c.name, "Select a category", catOverride
+        );
+      }
+    } catch (err) {
+      console.error("[FNRG] refreshMasterData error:", err);
+      showFlash("Could not refresh dropdown data: " + err.message, "danger");
+    }
+  }
+
+  // ── Modals ────────────────────────────────────────────────────────────────
+  function openModal(id)  { document.getElementById(id).classList.add("visible"); }
+  function closeModal(id) { document.getElementById(id).classList.remove("visible"); }
+  function closeAllModals() {
+    document.querySelectorAll(".modal-overlay.visible").forEach(o => o.classList.remove("visible"));
+  }
+
+  document.getElementById("addBookBtn").addEventListener("click",    () => openModal("addBookOverlay"));
+  document.getElementById("cancelAddBook").addEventListener("click", () => {
+    closeModal("addBookOverlay");
+    document.getElementById("addBookForm").reset();
+  });
+
+  // ── Add New Book: async submit, loader, refreshes master data ─────────────
+  const addBookForm      = document.getElementById("addBookForm");
+  const addBookSubmitBtn = addBookForm.querySelector('button[type="submit"]');
+  const newTitleInput    = document.getElementById("newTitle");
+
+  addBookForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    addBookSubmitBtn.disabled = true;
+    addBookSubmitBtn.classList.add("btn-loading");
+
+    try {
+      const res = await fetch(`${addBookForm.action}?ajax=1`, {
+        method: "POST",
+        body:   new FormData(addBookForm),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error ${res.status} — response was not JSON`);
+      }
+      // Success is the HTTP status here, not a data.ok flag — see the
+      // Add Language/Category handler above for why.
+      if (!res.ok) throw new Error(data.detail || data.message || `Server error ${res.status}`);
+
+      // Close + reset the moment the save succeeds — don't wait on the
+      // dropdown refresh below.
+      closeModal("addBookOverlay");
+      addBookForm.reset();
+      showFlash(data.message || "Book saved.", "success");
+
+      // Re-fetch the catalog from the server (fresh API call) so every book
+      // dropdown — the purchase rows, the "Book Name" filter, and future
+      // "+ Add Another Book" rows — includes the new title right away.
+      // Prefer an id if the backend returns one; fall back to matching by title.
+      const bookOverride = data.id ?? data.title ?? newTitleInput.value;
+      await refreshMasterData({ book: bookOverride });
+    } catch (err) {
+      console.error("[FNRG] addBook error:", err);
+      showFlash(err.message, "danger");
+    } finally {
+      addBookSubmitBtn.disabled = false;
+      addBookSubmitBtn.classList.remove("btn-loading");
+    }
+  });
+
+  document.querySelectorAll("[data-close-modal]").forEach(btn => {
+    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
+  });
+  document.querySelectorAll(".modal-overlay").forEach(overlay => {
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) closeModal(overlay.id);
+    });
+  });
+
+  // Language / Category modal
+  const addLangCatBtn    = document.getElementById("addLangCatBtn");
+  const addLangCatForm   = document.getElementById("addLangCatForm");
+  const addLangCatTitle  = document.getElementById("addLangCatTitle");
+  const newLangCatLabel  = document.getElementById("newLangCatLabel");
+  const newLangCatName   = document.getElementById("newLangCatName");
+  const addLangCatSubmit = document.getElementById("addLangCatSubmit");
+
+  const LANG_CAT_TYPE_CONFIG = {
+    language: {
+      action:      "{{ url_for('books.master_data_add_language') }}",
+      title:       "Add Language",
+      label:       "Language name",
+      placeholder: "e.g. Telugu",
+      submit:      "Save Language"
+    },
+    category: {
+      action:      "{{ url_for('books.master_data_add_category') }}",
+      title:       "Add Category",
+      label:       "Category name",
+      placeholder: "e.g. Children's Books",
+      submit:      "Save Category"
+    }
+  };
+
+  function applyLangCatType(type) {
+    const cfg            = LANG_CAT_TYPE_CONFIG[type];
+    addLangCatForm.action        = cfg.action;
+    addLangCatTitle.textContent  = cfg.title;
+    newLangCatLabel.textContent  = cfg.label;
+    newLangCatName.placeholder   = cfg.placeholder;
+    addLangCatSubmit.textContent = cfg.submit;
+  }
+
+  document.querySelectorAll('input[name="langCatType"]').forEach(radio => {
+    radio.addEventListener("change", () => applyLangCatType(radio.value));
+  });
+
+  addLangCatBtn.addEventListener("click", () => {
+    const checked = document.querySelector('input[name="langCatType"]:checked');
+    applyLangCatType(checked ? checked.value : "language");
+    newLangCatName.value = "";
+    openModal("addLangCatOverlay");
+  });
+
+  // ── Add Language / Category: async submit, closes ONLY this modal ─────────
+  // On success: (1) close this modal immediately, (2) reset its fields,
+  // (3) show a success flash, (4) pull fresh master data from the server and
+  // rebuild every dependent dropdown (languages, categories, books, sources)
+  // so the new entry is selectable everywhere right away — all without a
+  // full page reload, and without touching the Add New Book modal underneath.
+  addLangCatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const type = document.querySelector('input[name="langCatType"]:checked')?.value || "language";
+    const cfg  = LANG_CAT_TYPE_CONFIG[type];
+
+    addLangCatSubmit.disabled = true;
+    addLangCatSubmit.classList.add("btn-loading");
+    try {
+      const res = await fetch(`${cfg.action}?ajax=1`, {
+        method: "POST",
+        body:   new FormData(addLangCatForm),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error ${res.status} — response was not JSON`);
+      }
+
+      // The FastAPI endpoint behind this route returns {"message","name"}
+      // with NO "ok" field — success is signaled purely by the HTTP status
+      // (201). Checking data.ok here would always be false, so res.ok is
+      // authoritative.
+      if (!res.ok) throw new Error(data.detail || data.message || `Server error ${res.status}`);
+
+      // Close every open modal (Add Language/Category AND Add New Book
+      // underneath it), then do a full reload so the #newLang / #newCat
+      // dropdowns — and every other master-data dropdown on the page — are
+      // rebuilt server-side from the fresh, authoritative Jinja context.
+      closeAllModals();
+      addLangCatForm.reset();
+      window.location.reload();
+      return; // page is reloading — nothing further to do here
+
+    } catch (err) {
+      console.error("[FNRG] addLangCat error:", err);
+      showFlash(err.message, "danger");
+      addLangCatSubmit.disabled = false;
+      addLangCatSubmit.classList.remove("btn-loading");
+    }
+  });
+
+  document.getElementById("addSourceBtn").addEventListener("click", () => openModal("addSourceOverlay"));
+
+  // ── Add Source: async submit, closes ONLY this modal ──────────────────────
+  const addSourceForm      = document.getElementById("addSourceForm");
+  const newSourceNameInput = document.getElementById("newSourceName");
+
+  addSourceForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const sourceSubmitBtn = addSourceForm.querySelector('button[type="submit"]');
+    sourceSubmitBtn.disabled = true;
+    sourceSubmitBtn.classList.add("btn-loading");
+
+    try {
+      const res = await fetch(`${addSourceForm.action}?ajax=1`, {
+        method: "POST",
+        body:   new FormData(addSourceForm),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Server error ${res.status} — response was not JSON`);
+      }
+      // Success is the HTTP status here, not a data.ok flag — see the
+      // Add Language/Category handler above for why.
+      if (!res.ok) throw new Error(data.detail || data.message || `Server error ${res.status}`);
+
+      // Close + reset the moment the save succeeds — don't wait on the
+      // dropdown refresh below.
+      closeModal("addSourceOverlay");
+      addSourceForm.reset();
+      showFlash(data.message || "Source saved.", "success");
+
+      // Pull the fresh source list from the server (fresh API call) so the
+      // main "Source Purchased From" select is authoritative, then select
+      // the new one. Prefer an id if returned; fall back to matching by name.
+      const sourceOverride = data.id ?? data.name ?? newSourceNameInput.value;
+      await refreshMasterData({ source: sourceOverride });
+    } catch (err) {
+      console.error("[FNRG] addSource error:", err);
+      showFlash(err.message, "danger");
+    } finally {
+      sourceSubmitBtn.disabled = false;
+      sourceSubmitBtn.classList.remove("btn-loading");
+    }
+  });
+</script>
+{% endblock %}
