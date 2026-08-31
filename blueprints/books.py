@@ -16,7 +16,8 @@ the whole app right now and see exactly which calls need fixing.
 """
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for, Response
-from services.api_client import BackendError, get_file, get_json, post_form, post_json
+from services.api_client import BackendError, get_file, get_json, parallel_get_json, post_form, post_json
+from services.auth import permission_required
 
 bp = Blueprint("books", __name__)
 
@@ -46,14 +47,19 @@ def _empty_filter_set():
 # ------------------------------------------------------------- dashboard ---
 
 @bp.route("/dashboard")
+@permission_required("dashboard_view")
 def dashboard():
     redirect_resp = _require_login()
     if redirect_resp:
         return redirect_resp
 
+    is_ajax = request.args.get("ajax") == "1"
+
     try:
-        data = get_json(_base_url(),"/api/dashboard", params=request.args)
+        data = get_json(_base_url(), "/api/dashboard", params=request.args)
     except BackendError as exc:
+        if is_ajax:
+            return jsonify(ok=False, message=f"Could not load the dashboard: {exc.detail}"), 502
         flash(f"Could not load the dashboard: {exc.detail}", "error")
         data = {
             "kpis": {"qty": 0, "cost": 0, "revenue": 0},
@@ -69,6 +75,11 @@ def dashboard():
             "window_label": "All time",
             "is_admin": session.get("role") == "admin",
         }
+
+    if is_ajax:
+        # Same payload the template consumes — the frontend patches
+        # only the section whose filter form triggered this call.
+        return jsonify(ok=True, **data)
 
     return render_template(
         "home.html",
@@ -86,12 +97,14 @@ def dashboard():
         inventory=data.get("inventory", []),
     )
 
-
 @bp.route("/master-data/threshold", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_update_threshold():
     redirect_resp = _require_login()
     if redirect_resp:
         return redirect_resp
+
+    is_ajax = request.args.get("ajax") == "1"
 
     title = request.form.get("title", "").strip()
     try:
@@ -100,18 +113,33 @@ def master_data_update_threshold():
         threshold = 0
 
     try:
-        post_json("/api/master-data/books/threshold", json_body={"title": title, "threshold": threshold})
-        flash(f'Threshold for "{title}" updated.', "success")
-    except BackendError as exc:
-        flash(f"Could not update threshold: {exc.detail}", "error")
+        result = post_json(
+            _base_url(),
+            "/api/master-data/books/threshold",
+            json={"title": title, "threshold": threshold},
+        )
+        message = result.get("message", f'Threshold for "{title}" updated.')
 
-    # Land back on the dashboard with whatever filters were active.
+        if is_ajax:
+            # Backend only updates the threshold and doesn't echo back
+            # stock/low-stock info (`book` comes back null) — so we only
+            # confirm the save, we don't try to patch other row values.
+            return jsonify(ok=True, message=message, title=title, threshold=threshold)
+        flash(message, "success")
+
+    except BackendError as exc:
+        message = f"Could not update threshold: {exc.detail}"
+        if is_ajax:
+            return jsonify(ok=False, message=message), 502
+        flash(message, "error")
+
     return redirect(url_for("books.dashboard", **request.args))
 
 
 # ------------------------------------------------------------ sell entry ---
 
 @bp.route("/sell-entry", methods=["GET", "POST"])
+@permission_required("sell_entry_write")
 def sell_entry():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -150,6 +178,8 @@ def sell_entry():
 
     # -- GET: filters -----------------------------------------------------
     se_user = (request.args.get("se_user") or "all").strip() or "all"
+    if session.get("role") != "admin":
+        se_user = session.get("username", "all")
     se_event = (request.args.get("se_event") or "all").strip() or "all"
     se_date_from = (request.args.get("se_date_from") or "").strip()
     se_date_to = (request.args.get("se_date_to") or "").strip()
@@ -172,30 +202,36 @@ def sell_entry():
         users=[],
         sale_filters=sale_filters,
     )
-    try:
-        # PLACEHOLDER: GET /api/sell (page data: locations, book_titles,
-        # my_sales, book_stock, book_cost, users), filtered server-side by
-        # the se_user / se_event / se_date_from / se_date_to params.
-        data = get_json(
-            _base_url(),
-            "/api/sell",
-            params={
-                "se_user": se_user,
-                "se_event": se_event,
-                "se_date_from": se_date_from,
-                "se_date_to": se_date_to,
-                "se_location": se_location
-            },
-        )
-        if data:
-            users_list = get_json(_base_url_admin(), "/api/users/get_all")
-            data["users"] = users_list
-            context.update(data)
-            context["sale_filters"] = sale_filters  # keep the normalized version, not whatever the API echoes back
-    except BackendError as exc:
+
+    # /api/sell (page data) and /api/users/get_all (for recorded-by
+    # enrichment) don't depend on each other's result, so fire both
+    # concurrently instead of waiting on /api/sell before even starting
+    # the users call.
+    sell_data, users_list = parallel_get_json([
+        (_base_url(), "/api/sell", {"params": {
+            "se_user": se_user,
+            "se_event": se_event,
+            "se_date_from": se_date_from,
+            "se_date_to": se_date_to,
+            "se_location": se_location,
+        }}),
+        (_base_url_admin(), "/api/users/get_all", {}),
+    ])
+
+    if isinstance(sell_data, BackendError):
+        # /api/sell is the primary data source for this page -- same
+        # fatal behavior as before if it fails.
         if is_ajax:
-            return jsonify(ok=False, message=str(exc)), 502
-        flash(f"Sell entry: {exc}", "danger")
+            return jsonify(ok=False, message=str(sell_data)), 502
+        flash(f"Sell entry: {sell_data}", "danger")
+    elif sell_data:
+        if isinstance(users_list, BackendError):
+            # Users list is only used for enrichment elsewhere -- don't
+            # fail the whole page over it, just degrade to an empty list.
+            users_list = []
+        sell_data["users"] = users_list
+        context.update(sell_data)
+        context["sale_filters"] = sale_filters  # keep the normalized version, not whatever the API echoes back
 
     if is_ajax:
         # book_stock/book_cost included so the frontend can refresh
@@ -212,6 +248,7 @@ def sell_entry():
     return render_template("sell_entry.html", **context)
 
 @bp.route("/sell-entry/export")
+@permission_required("admin_tools")
 def export_sell_entries():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -236,6 +273,7 @@ def _enrich_recorded_by(purchases, users_list):
 
 
 @bp.route("/inward-stock", methods=["GET"])
+@permission_required("inward_stock_write")
 def inward_stock():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -250,17 +288,30 @@ def inward_stock():
         purchase_filters={"recorded_by": "all", "book": "all", "date_from": "", "date_to": ""},
     )
 
-    try:
-        data       = get_json(_base_url(), "/api/inward-stock", params=request.args.to_dict(flat=True))
-        users_list = get_json(_base_url_admin(), "/api/users/get_all")
-        if data:
-            data["users"] = users_list
-            context.update(data)
-    except BackendError as exc:
+    # Same independent-call shape as sell_entry(): /api/inward-stock and
+    # /api/users/get_all don't depend on each other, so run them
+    # concurrently instead of one after the other.
+    data, users_list = parallel_get_json([
+        (_base_url(), "/api/inward-stock", {"params": request.args.to_dict(flat=True)}),
+        (_base_url_admin(), "/api/users/get_all", {}),
+    ])
+
+    if isinstance(data, BackendError):
+        # /api/inward-stock is the primary data source -- same fatal
+        # behavior as before if it fails.
         if is_ajax:
-            return jsonify({"ok": False, "message": str(exc)}), 500
-        flash(f"Inward stock: {exc}", "danger")
+            return jsonify({"ok": False, "message": str(data)}), 500
+        flash(f"Inward stock: {data}", "danger")
         return render_template("inward_stock.html", **context)
+
+    if isinstance(users_list, BackendError):
+        # Only used for the recorded-by-name enrichment -- degrade
+        # gracefully instead of failing the whole page over it.
+        users_list = []
+
+    if data:
+        data["users"] = users_list
+        context.update(data)
 
     if is_ajax:
         if want_master:
@@ -280,6 +331,7 @@ def inward_stock():
 
 
 @bp.route("/inward-stock", methods=["POST"])
+@permission_required("inward_stock_write")
 def inward_stock_submit():
     """Handle a new purchase submission (form POST or AJAX)."""
     redirect_resp = _require_login()
@@ -326,6 +378,7 @@ def inward_stock_submit():
     return redirect(url_for("books.inward_stock"))
 
 @bp.route("/inward-stock/export")
+@permission_required("admin_tools")  
 def export_inward_stock():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -342,6 +395,7 @@ def export_inward_stock():
 # ------------------------------------------------------------ master data ---
 
 @bp.route("/master-data")
+@permission_required("master_data_write")
 def master_data():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -383,6 +437,7 @@ def _master_data_add(subpath, field_from_form, redirect_flash_label):
 
 
 @bp.route("/master-data/books", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_book():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -391,6 +446,7 @@ def master_data_add_book():
 
 
 @bp.route("/master-data/categories", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_category():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -399,6 +455,7 @@ def master_data_add_category():
 
 
 @bp.route("/master-data/languages", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_language():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -407,6 +464,7 @@ def master_data_add_language():
 
 
 @bp.route("/master-data/locations", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_location():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -415,6 +473,7 @@ def master_data_add_location():
 
 
 @bp.route("/master-data/events", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_event():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -423,6 +482,7 @@ def master_data_add_event():
 
 
 @bp.route("/master-data/sources", methods=["POST"])
+@permission_required("master_data_write")
 def master_data_add_source():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -446,40 +506,43 @@ def master_data_add_source():
 
 # ------------------------------------------------------------------ backup ---
 
-@bp.route("/backup")
-def backup():
-    redirect_resp = _require_login()
-    if redirect_resp:
-        return redirect_resp
+# @bp.route("/backup")
+# @permission_required("backup")
+# def backup():
+#     redirect_resp = _require_login()
+#     if redirect_resp:
+#         return redirect_resp
 
-    days = []
-    try:
-        # PLACEHOLDER: GET /api/backup -> {"days": [{"date":..., "has_records":...}]}
-        data = get_json(_base_url(), "/api/backup") or {}
-        days = data.get("days", [])
-    except BackendError as exc:
-        flash(f"Backup: {exc}", "danger")
+#     days = []
+#     try:
+#         # PLACEHOLDER: GET /api/backup -> {"days": [{"date":..., "has_records":...}]}
+#         data = get_json(_base_url(), "/api/backup") or {}
+#         days = data.get("days", [])
+#     except BackendError as exc:
+#         flash(f"Backup: {exc}", "danger")
 
-    return render_template("backup.html", days=days)
+#     return render_template("backup.html", days=days)
 
 
-@bp.route("/backup/<day>/download")
-def backup_download(day):
-    redirect_resp = _require_login()
-    if redirect_resp:
-        return redirect_resp
-    try:
-        # PLACEHOLDER: GET /api/backup/{day}/export
-        resp = get_file(_base_url(), f"/api/backup/{day}/export")
-    except BackendError as exc:
-        flash(f"Backup download: {exc}", "danger")
-        return redirect(url_for("books.backup"))
-    return _xlsx_response(resp, f"backup_{day}.xlsx")
+# @bp.route("/backup/<day>/download")
+# @permission_required("backup")
+# def backup_download(day):
+#     redirect_resp = _require_login()
+#     if redirect_resp:
+#         return redirect_resp
+#     try:
+#         # PLACEHOLDER: GET /api/backup/{day}/export
+#         resp = get_file(_base_url(), f"/api/backup/{day}/export")
+#     except BackendError as exc:
+#         flash(f"Backup download: {exc}", "danger")
+#         return redirect(url_for("books.backup"))
+#     return _xlsx_response(resp, f"backup_{day}.xlsx")
 
 
 # ------------------------------------------------------------------ upload ---
 
 @bp.route("/upload", methods=["GET", "POST"])
+@permission_required("master_data_write")
 def upload():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -514,6 +577,7 @@ def upload():
 
 
 @bp.route("/upload/sample")
+@permission_required("master_data_write")
 def upload_sample():
     redirect_resp = _require_login()
     if redirect_resp:
@@ -530,16 +594,19 @@ def upload_sample():
 # ------------------------------------------------------------------ exports ---
 
 @bp.route("/dashboard/export/leaderboard")
+@permission_required("admin_tools")
 def export_leaderboard():
     return _dashboard_export("/api/dashboard/export/leaderboard", "leaderboard.xlsx")
 
 
 @bp.route("/dashboard/export/top-books")
+@permission_required("admin_tools")
 def export_top_books():
     return _dashboard_export("/api/dashboard/export/top-books", "top_books.xlsx")
 
 
 @bp.route("/dashboard/export/inventory")
+@permission_required("admin_tools")
 def export_inventory():
     return _dashboard_export("/api/dashboard/export/inventory", "inventory.xlsx")
 

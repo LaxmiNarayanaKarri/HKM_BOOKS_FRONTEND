@@ -10,32 +10,34 @@
 
 {{ filter_bar('', filters, is_admin, sellers, events) }}
 
-<section class="kpi-cluster">
+<section class="kpi-cluster" id="section-kpis">
+  <div class="section-loader"><span class="spinner"></span></div>
   <div class="kpi-item">
     <span class="kpi-label">Number of Books Distributed</span>
-    <span class="kpi-value">{{ kpis.qty }}</span>
+    <span class="kpi-value" id="kpi-qty">{{ kpis.qty }}</span>
   </div>
   <div class="kpi-item kpi-accent-teal">
     <span class="kpi-label">Total Cost of Books</span>
-    <span class="kpi-value">₹{{ "{:,.0f}".format(kpis.cost) }}</span>
+    <span class="kpi-value" id="kpi-cost">₹{{ "{:,.0f}".format(kpis.cost) }}</span>
   </div>
   <div class="kpi-item kpi-accent-teal">
     <span class="kpi-label">Total Sales of Books</span>
-    <span class="kpi-value">₹{{ "{:,.0f}".format(kpis.revenue) }}</span>
+    <span class="kpi-value" id="kpi-revenue">₹{{ "{:,.0f}".format(kpis.revenue) }}</span>
   </div>
-  <div class="kpi-item {{ 'kpi-accent-green' if net_pl >= 0 else 'kpi-accent-red' }}">
-    <span class="kpi-label">{{ 'Profit' if net_pl >= 0 else 'Loss' }}</span>
-    <span class="kpi-value">₹{{ "{:,.0f}".format(net_pl|abs) }}</span>
-    <span class="kpi-sub">{{ "{:+.1f}".format(pl_pct) }}%</span>
+  <div class="kpi-item {{ 'kpi-accent-green' if net_pl >= 0 else 'kpi-accent-red' }}" id="kpi-pl-item">
+    <span class="kpi-label" id="kpi-pl-label">{{ 'Profit' if net_pl >= 0 else 'Loss' }}</span>
+    <span class="kpi-value" id="kpi-pl-value">₹{{ "{:,.0f}".format(net_pl|abs) }}</span>
+    <span class="kpi-sub" id="kpi-pl-pct">{{ "{:+.1f}".format(pl_pct) }}%</span>
   </div>
   <div class="kpi-item kpi-accent-amber">
     <span class="kpi-label">Stock In Hand</span>
-    <span class="kpi-value">{{ total_available }}</span>
+    <span class="kpi-value" id="kpi-stock">{{ total_available }}</span>
   </div>
 </section>
 
 {% if is_admin %}
-<section class="table-card">
+<section class="table-card" id="section-leaderboard">
+  <div class="section-loader"><span class="spinner"></span></div>
   <div class="card-header-row">
     <h3>Top Distributors</h3>
     <a href="{{ url_for('books.export_leaderboard') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
@@ -48,7 +50,7 @@
       <thead>
         <tr><th>S.No</th><th>Name</th><th>Amount Collected</th><th>Qty</th></tr>
       </thead>
-      <tbody>
+      <tbody id="leaderboard-body">
         {% for row in leaderboard %}
         <tr>
           <td>{{ loop.index }}</td>
@@ -65,7 +67,8 @@
 </section>
 {% endif %}
 
-<section class="table-card">
+<section class="table-card" id="section-books">
+  <div class="section-loader"><span class="spinner"></span></div>
   <div class="card-header-row">
     <h3>{{ 'My Top Books' if not is_admin else 'Top Books' }}</h3>
     <a href="{{ url_for('books.export_top_books') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
@@ -78,7 +81,7 @@
       <thead>
         <tr><th>Title</th><th>Qty Distributed</th></tr>
       </thead>
-      <tbody>
+      <tbody id="books-body">
         {% for b in my_top_books %}
         <tr>
           <td>{{ b.title }}</td>
@@ -92,14 +95,15 @@
   </div>
 </section>
 
-<section class="table-card">
+<section class="table-card" id="section-inventory">
+  <div class="section-loader"><span class="spinner"></span></div>
   <div class="card-header-row">
     <h3>Book Inventory Updates {{ '(all sellers, all time)' if is_admin else '' }}</h3>
     <div class="header-actions">
       <a href="{{ url_for('books.export_inventory') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
       <div class="corner-badge">
         <span class="corner-badge-label">Total Books Available</span>
-        <span class="corner-badge-value">{{ total_available }}</span>
+        <span class="corner-badge-value" id="inv-total-available">{{ total_available }}</span>
       </div>
     </div>
   </div>
@@ -119,11 +123,11 @@
           <th>% Profit/Loss</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="inventory-body">
         {% for b in inventory %}
-        <tr>
+        <tr data-title="{{ b.title }}">
           <td class="col-left">{{ b.title }}</td>
-          <td class="{{ 'text-red' if b.below_threshold else 'text-green' }}">
+          <td class="stock-cell {{ 'text-red' if b.below_threshold else 'text-green' }}">
             {{ b.available }}{% if b.below_threshold %} &#9888; low{% endif %}
           </td>
           <td>
@@ -143,4 +147,216 @@
     </table>
   </div>
 </section>
+
+<style>
+  .section-loader { display: none; }
+  .is-loading { position: relative; }
+  .is-loading .section-loader {
+    display: flex; position: absolute; inset: 0; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.5); z-index: 5;
+  }
+  .spinner {
+    width: 22px; height: 22px; border: 3px solid rgba(0,0,0,0.15);
+    border-top-color: rgba(0,0,0,0.55); border-radius: 50%;
+    animation: fnrg-spin 0.7s linear infinite;
+  }
+  @keyframes fnrg-spin { to { transform: rotate(360deg); } }
+  .is-loading-row { opacity: 0.5; }
+  .has-error { outline: 2px solid #e5484d; }
+</style>
+
+<script>
+(function () {
+  const DASHBOARD_URL = "{{ url_for('books.dashboard') }}";
+  const THRESHOLD_URL = "{{ url_for('books.master_data_update_threshold') }}";
+
+  const SECTION_EL_ID = {
+    '': 'section-kpis',
+    'dist_': 'section-leaderboard',
+    'books_': 'section-books',
+    'inv_': 'section-inventory',
+  };
+
+  function fmtMoney(n) {
+    return '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+  function fmtMoney2(n) {
+    return '₹' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtPct(n) {
+    n = Number(n) || 0;
+    return (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+  }
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+
+  function updateKpis(data) {
+    document.getElementById('kpi-qty').textContent = data.kpis.qty;
+    document.getElementById('kpi-cost').textContent = fmtMoney(data.kpis.cost);
+    document.getElementById('kpi-revenue').textContent = fmtMoney(data.kpis.revenue);
+    document.getElementById('kpi-stock').textContent = data.total_available;
+
+    const isProfit = data.net_pl >= 0;
+    const plItem = document.getElementById('kpi-pl-item');
+    plItem.classList.toggle('kpi-accent-green', isProfit);
+    plItem.classList.toggle('kpi-accent-red', !isProfit);
+    document.getElementById('kpi-pl-label').textContent = isProfit ? 'Profit' : 'Loss';
+    document.getElementById('kpi-pl-value').textContent = fmtMoney(Math.abs(data.net_pl));
+    document.getElementById('kpi-pl-pct').textContent = fmtPct(data.pl_pct);
+
+    const corner = document.getElementById('inv-total-available');
+    if (corner) corner.textContent = data.total_available;
+  }
+
+  function updateLeaderboard(data) {
+    const tbody = document.getElementById('leaderboard-body');
+    if (!tbody) return;
+    const rows = data.leaderboard || [];
+    tbody.innerHTML = rows.length
+      ? rows.map((row, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${esc(row.seller)}</td>
+          <td>${fmtMoney(row.revenue)}</td>
+          <td>${esc(row.qty)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty-cell">No sales matched this filter.</td></tr>';
+  }
+
+  function updateTopBooks(data) {
+    const tbody = document.getElementById('books-body');
+    const rows = data.my_top_books || [];
+    tbody.innerHTML = rows.length
+      ? rows.map(b => `
+        <tr>
+          <td>${esc(b.title)}</td>
+          <td>${esc(b.qty)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="2" class="empty-cell">No sales recorded yet — add one from Books &amp; Sell Entry.</td></tr>';
+  }
+
+  function updateInventory(data) {
+    const tbody = document.getElementById('inventory-body');
+    const rows = data.inventory || [];
+    tbody.innerHTML = rows.map(b => `
+      <tr data-title="${esc(b.title)}">
+        <td class="col-left">${esc(b.title)}</td>
+        <td class="stock-cell ${b.below_threshold ? 'text-red' : 'text-green'}">
+          ${b.available}${b.below_threshold ? ' &#9888; low' : ''}
+        </td>
+        <td>
+          <form method="POST" action="${THRESHOLD_URL}" class="threshold-edit">
+            <input type="hidden" name="title" value="${esc(b.title)}">
+            <input type="number" name="threshold" value="${b.threshold}" min="0">
+            <button type="submit" class="btn-toggle">Save</button>
+          </form>
+        </td>
+        <td>${fmtMoney2(b.avg_cost)}</td>
+        <td>${fmtMoney2(b.avg_sell)}</td>
+        <td class="${b.profit_or_loss >= 0 ? 'text-green' : 'text-red'}">${fmtMoney(b.profit_or_loss)}</td>
+        <td class="${b.pl_pct >= 0 ? 'text-green' : 'text-red'}">${fmtPct(b.pl_pct)}</td>
+      </tr>`).join('');
+    bindThresholdForms(tbody);
+  }
+
+  const SECTION_UPDATERS = {
+    '': [updateKpis],
+    'dist_': [updateLeaderboard],
+    'books_': [updateTopBooks],
+    'inv_': [updateInventory, updateKpis],
+  };
+
+  async function submitFilterForm(form) {
+    const section = form.dataset.section ?? '';
+    const wrapper = document.getElementById(SECTION_EL_ID[section]);
+    if (!wrapper) return;
+
+    const params = new URLSearchParams(new FormData(form));
+    params.set('ajax', '1');
+
+    wrapper.classList.add('is-loading');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const resp = await fetch(`${DASHBOARD_URL}?${params.toString()}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.ok === false) throw new Error(data.message || 'Request failed');
+
+      (SECTION_UPDATERS[section] || []).forEach(fn => fn(data));
+
+      const historyParams = new URLSearchParams(params);
+      historyParams.delete('ajax');
+      history.replaceState(null, '', `${DASHBOARD_URL}?${historyParams.toString()}`);
+    } catch (err) {
+      console.error(err);
+      wrapper.classList.add('has-error');
+      setTimeout(() => wrapper.classList.remove('has-error'), 2000);
+    } finally {
+      wrapper.classList.remove('is-loading');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  document.querySelectorAll('form.filter-bar').forEach(form => {
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      submitFilterForm(form);
+    });
+  });
+
+  async function submitThresholdForm(form) {
+    const row = form.closest('tr');
+    const btn = form.querySelector('button[type="submit"]');
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    row.classList.add('is-loading-row');
+
+    try {
+      const params = new URLSearchParams(new FormData(form));
+      const resp = await fetch(`${THRESHOLD_URL}?ajax=1`, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: params,
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.message || 'Update failed');
+
+      const stockCell = row.querySelector('.stock-cell');
+      if (stockCell && data.available !== undefined && data.below_threshold !== undefined) {
+        stockCell.classList.toggle('text-red', !!data.below_threshold);
+        stockCell.classList.toggle('text-green', !data.below_threshold);
+        stockCell.innerHTML = `${data.available}${data.below_threshold ? ' &#9888; low' : ''}`;
+      }
+      btn.textContent = 'Saved ✓';
+      setTimeout(() => { btn.textContent = originalLabel; }, 1200);
+    } catch (err) {
+      console.error(err);
+      btn.textContent = 'Error';
+      setTimeout(() => { btn.textContent = originalLabel; }, 1500);
+    } finally {
+      btn.disabled = false;
+      row.classList.remove('is-loading-row');
+    }
+  }
+
+  function bindThresholdForms(scope) {
+    (scope || document).querySelectorAll('form.threshold-edit').forEach(form => {
+      if (form.dataset.bound) return;
+      form.dataset.bound = '1';
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        submitThresholdForm(form);
+      });
+    });
+  }
+  bindThresholdForms(document);
+})();
+</script>
 {% endblock %}

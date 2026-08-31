@@ -10,11 +10,24 @@ issue a JWT as well -- harmless if the backend ignores it. If your
 auth.py works differently, this is the one place to change.
 """
 
+import logging
 import os
-from time import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
-from flask import session
+from requests.adapters import HTTPAdapter
+from flask import current_app, session
+
+log = logging.getLogger(__name__)
+
+# (connect timeout, read timeout) in seconds. Every call gets this unless
+# a caller explicitly overrides it. Previously the default was `None`,
+# i.e. no timeout at all -- a hung backend could hang a whole worker
+# thread indefinitely.
+DEFAULT_TIMEOUT = (3, 10)
+
+_thread_local = threading.local()
 
 
 class BackendError(Exception):
@@ -26,8 +39,30 @@ class BackendError(Exception):
         self.status_code = status_code
 
 
-def _auth_headers():
-    headers = {}
+def _get_session():
+    """One pooled, keep-alive requests.Session per worker thread.
+
+    Reusing a Session avoids a fresh TCP (+TLS) handshake on every call --
+    the previous code went through the bare `requests.request` module
+    function, which internally opens and tears down a new Session (and
+    connection) on every single call, even to a host it just talked to.
+    """
+    sess = getattr(_thread_local, "session", None)
+    if sess is None:
+        sess = requests.Session()
+        adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20)
+        sess.mount("http://", adapter)
+        sess.mount("https://", adapter)
+        _thread_local.session = sess
+    return sess
+
+
+def _build_headers(extra=None):
+    """Reads Flask `session` / `current_app` -- only call this from a
+    thread that has the active request/app context (i.e. never from
+    inside a ThreadPoolExecutor worker)."""
+    headers = dict(extra or {})
+
     username = session.get("username")
     role = session.get("role")
     token = session.get("access_token")
@@ -37,6 +72,13 @@ def _auth_headers():
         headers["X-Role"] = role
     if token:
         headers["Authorization"] = f"Bearer {token}"
+
+    internal_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or os.environ.get(
+        "INTERNAL_SERVICE_TOKEN", ""
+    )
+    if internal_token:
+        headers["X-Internal-Token"] = internal_token
+
     return headers
 
 
@@ -53,24 +95,21 @@ def _raise_for_error(resp):
         raise BackendError(detail or f"Request failed ({resp.status_code}).", resp.status_code)
 
 
-def _request(method, base_url, path, timeout=None, **kwargs):
-    from flask import current_app
- 
-    url = f"{base_url}{path}"
-    headers = kwargs.pop("headers", {}) or {}
-    headers.update(_auth_headers())
- 
-    internal_token = current_app.config.get("INTERNAL_SERVICE_TOKEN") or os.environ.get(
-        "INTERNAL_SERVICE_TOKEN", ""
-    )
-    if internal_token:
-        headers["X-Internal-Token"] = internal_token
+def _do_request(method, url, headers, timeout, **kwargs):
+    """Context-free -- safe to call from a worker thread. Headers must
+    already be fully built (see _build_headers)."""
     try:
-        resp = requests.request(method, url, headers=headers, timeout=timeout, **kwargs)
-        print(f"[_request] <- response status: {resp.status_code} for {url}")
+        resp = _get_session().request(method, url, headers=headers, timeout=timeout, **kwargs)
+        log.debug("<- %s %s", resp.status_code, url)
         return resp
     except requests.exceptions.RequestException as exc:
         raise BackendError(f"Could not reach {url} ({exc.__class__.__name__}).", 503)
+
+
+def _request(method, base_url, path, timeout=None, headers=None, **kwargs):
+    url = f"{base_url}{path}"
+    full_headers = _build_headers(headers)
+    return _do_request(method, url, full_headers, timeout or DEFAULT_TIMEOUT, **kwargs)
 
 
 def get_json(base_url, path, **kwargs):
@@ -103,3 +142,47 @@ def get_file(base_url, path, **kwargs):
     resp = _request("GET", base_url, path, **kwargs)
     _raise_for_error(resp)
     return resp
+
+
+def parallel_get_json(calls):
+    """
+    Run several independent GET calls concurrently (they must not depend
+    on each other's results) and return their parsed JSON in the same
+    order the calls were given.
+
+    calls: list of (base_url, path, kwargs) tuples. kwargs may include
+    e.g. {"params": {...}, "timeout": (3, 10)}.
+
+    Headers are built once per call HERE, in the calling (request)
+    thread, before handing off to the pool -- worker threads never touch
+    Flask's `session`/`current_app`.
+
+    Per-call failures are returned as a BackendError in that slot instead
+    of raising immediately, so one unhealthy service doesn't discard a
+    result you already got from a healthy one. Check each slot with
+    `isinstance(result, BackendError)`.
+    """
+    prepared = []
+    for base_url, path, kwargs in calls:
+        kwargs = dict(kwargs or {})
+        headers = _build_headers(kwargs.pop("headers", None))
+        timeout = kwargs.pop("timeout", None) or DEFAULT_TIMEOUT
+        prepared.append((f"{base_url}{path}", headers, timeout, kwargs))
+
+    results = [None] * len(prepared)
+
+    def _run(i, url, headers, timeout, kwargs):
+        try:
+            resp = _do_request("GET", url, headers, timeout, **kwargs)
+            _raise_for_error(resp)
+            return i, (resp.json() if resp.content else None)
+        except BackendError as exc:
+            return i, exc
+
+    with ThreadPoolExecutor(max_workers=max(len(prepared), 1)) as pool:
+        futures = [pool.submit(_run, i, *args) for i, args in enumerate(prepared)]
+        for fut in as_completed(futures):
+            i, value = fut.result()
+            results[i] = value
+
+    return results

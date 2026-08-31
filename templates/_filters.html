@@ -25,7 +25,9 @@
 
     <form method="GET"
           action="{{ url_for('books.dashboard') }}"
-          class="filter-bar">
+          class="filter-bar"
+          id="filter-form-{{ prefix if prefix else 'main' }}"
+          data-section="{{ prefix }}">
 
         {# Preserve filters belonging to other sections #}
         {% for other_prefix, other in filters.items() %}

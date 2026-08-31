@@ -106,7 +106,11 @@
 <!-- ── /Add Location / Event popup ─────────────────────────────── -->
 
 <!-- ── Current Assignments ─────────────────────────────────────── -->
-<section class="table-card">
+<section class="table-card section-relative" id="assignmentsSection">
+  <div class="section-loader" id="assignmentsSectionLoader" hidden>
+    <span class="btn-spinner section-spinner"></span>
+  </div>
+
   <h3>Current Assignments</h3>
 
   <!-- Bulk toolbar: visible only when ≥1 row is checked -->
@@ -184,7 +188,11 @@
 </section>
 <!-- ── /Current Assignments ────────────────────────────────────── -->
 
-<section class="table-card">
+<section class="table-card section-relative" id="overviewSection">
+  <div class="section-loader" id="overviewSectionLoader" hidden>
+    <span class="btn-spinner section-spinner"></span>
+  </div>
+
   <div class="card-header-row">
     <h3>Locations Overview</h3>
     <div class="corner-badge">
@@ -197,11 +205,16 @@
   <form class="filter-bar" id="overviewFilterForm">
     <div class="field">
       <label for="ov_date_from">From Date</label>
-      <input type="date" id="ov_date_from" name="ov_date_from" value="{{ ov_date_from }}" max="{{ today }}">
+      <!-- Pre-selected to today when no from-date filter was passed in,
+           so this field starts populated with today's date on first
+           load, matching the behavior of the Date field below. -->
+      <input type="date" id="ov_date_from" name="ov_date_from" value="{{ ov_date_from or today }}" max="{{ today }}">
     </div>
     <div class="field">
       <label for="ov_date">Date</label>
-      <input type="date" id="ov_date" name="ov_date" value="{{ ov_date }}" max="{{ today }}">
+      <!-- Pre-selected to today when no date filter was passed in, so the
+           page renders already scoped to today's data on first load. -->
+      <input type="date" id="ov_date" name="ov_date" value="{{ ov_date or today }}" max="{{ today }}">
     </div>
     <div class="field">
       <label for="ov_location">Location</label>
@@ -236,7 +249,10 @@
         <span class="location-sales-label">Total Sales</span>
         <span class="location-sales-value">&#8377;{{ "{:,.0f}".format(ov_sales_by_location.get(l.name.strip(), 0)) }}</span>
       </div>
-      <div class="location-names" data-role="names"></div>
+      <button type="button" class="location-names-toggle" data-role="names-toggle" hidden>
+        <span data-role="names-toggle-label">Show volunteers</span>
+      </button>
+      <div class="location-names" data-role="names" hidden></div>
     </div>
     {% endif %}
     {% endfor %}
@@ -259,6 +275,12 @@ const STATE = {
   events:     {{ events     | tojson }},
 };
 
+/* Per-location, per-volunteer sales totals: { "<location>": { "<username>": amount, ... }, ... }
+   Reassigned after every refreshOverview() call (see there) so the
+   click-to-expand list always reflects the current filters, not just
+   what was true at initial page load. */
+let salesByLocationVolunteer = {{ (ov_sales_by_location_volunteer | default({})) | tojson }};
+
 /* ── tiny toast helper (replaces Flask flash + redirect) ─────── */
 const toastStack = document.getElementById("toastStack");
 function toast(message, kind) {
@@ -280,6 +302,17 @@ const apiLoaderOverlay = document.getElementById("apiLoaderOverlay");
 
 function showLoader() { apiLoaderOverlay.hidden = false; }
 function hideLoader()  { apiLoaderOverlay.hidden = true; }
+
+/* ── Section-local loaders — Current Assignments + Locations Overview ── */
+/* Used only for the bulk-delete refetch, so that action shows a local   */
+/* spinner over each section instead of the whole page dimming.         */
+const assignmentsSectionLoader = document.getElementById("assignmentsSectionLoader");
+const overviewSectionLoader    = document.getElementById("overviewSectionLoader");
+
+function showAssignmentsLoader() { assignmentsSectionLoader.hidden = false; }
+function hideAssignmentsLoader() { assignmentsSectionLoader.hidden = true; }
+function showOverviewLoader()    { overviewSectionLoader.hidden = false; }
+function hideOverviewLoader()    { overviewSectionLoader.hidden = true; }
 
 async function api(url, options) {
   const resp = await fetch(url, {
@@ -308,21 +341,6 @@ function optionsHtml(items, labelKey) {
   }).join("");
 }
 
-function updateVolunteerDropdowns() {
-  const selected = Array.from(rowsBody.querySelectorAll(".row-volunteer"))
-    .map(s => s.value).filter(v => v !== "");
-
-  rowsBody.querySelectorAll(".row-volunteer").forEach(select => {
-    const current = select.value;
-    Array.from(select.options).forEach(option => {
-      if (!option.value) return;
-      const takenByOther = selected.includes(option.value) && option.value !== current;
-      option.hidden   = takenByOther;
-      option.disabled = takenByOther;
-    });
-  });
-}
-
 function todayIso() { return new Date().toISOString().split("T")[0]; }
 
 function clearRow(row) {
@@ -332,19 +350,16 @@ function clearRow(row) {
   const dateInput = row.querySelector(".row-date");
   dateInput.valueAsDate = new Date();
   dateInput.max = todayIso();
-  updateVolunteerDropdowns();
 }
 
 function wireRow(row) {
   row.querySelector(".btn-remove-newrow").addEventListener("click", () => {
     if (rowsBody.querySelectorAll(".book-row").length > 1) {
       row.remove();
-      updateVolunteerDropdowns();
     } else {
       clearRow(row);
     }
   });
-  row.querySelector(".row-volunteer").addEventListener("change", updateVolunteerDropdowns);
 }
 
 function addRow() {
@@ -355,7 +370,6 @@ function addRow() {
   dateInput.valueAsDate = new Date();
   dateInput.max = todayIso();
   wireRow(liveRow);
-  updateVolunteerDropdowns();
   return liveRow;
 }
 
@@ -441,7 +455,7 @@ function applyMasterType(type) {
   addMasterTitle.textContent  = cfg.title;
   newMasterLabel.textContent  = cfg.label;
   newMasterName.placeholder   = cfg.placeholder;
-  addMasterSubmit.textContent = cfg.submit;
+  setMasterSubmitLoading(false, cfg.submit);
 }
 
 document.querySelectorAll('input[name="masterType"]').forEach(radio => {
@@ -469,6 +483,17 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
   });
 });
 
+/* Toggles a small inline spinner + "Saving..." label on the Save button
+   itself, instead of the full-page overlay — keeps feedback local to
+   the modal for this lightweight action. */
+function setMasterSubmitLoading(isLoading, label) {
+  addMasterSubmit.disabled = isLoading;
+  addMasterSubmit.classList.toggle("btn-loading", isLoading);
+  addMasterSubmit.innerHTML = isLoading
+    ? `<span class="btn-spinner"></span> Saving...`
+    : label;
+}
+
 addMasterForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const type = document.querySelector('input[name="masterType"]:checked').value;
@@ -476,8 +501,7 @@ addMasterForm.addEventListener("submit", async (e) => {
   const name = newMasterName.value.trim();
   if (!name) return;
 
-  addMasterSubmit.disabled = true;
-  showLoader();
+  setMasterSubmitLoading(true, cfg.submit);
   try {
     const created = await api(cfg.endpoint, {
       method: "POST",
@@ -497,14 +521,20 @@ addMasterForm.addEventListener("submit", async (e) => {
   } catch (err) {
     toast(err.message, "error");
   } finally {
-    addMasterSubmit.disabled = false;
-    hideLoader();
+    setMasterSubmitLoading(false, cfg.submit);
   }
 });
 
 function addLocationEverywhere(loc) {
-  // 1. every "Location" <select> in existing + future assignment rows
+  // 1. every "Location" <select> in existing assignment rows
   document.querySelectorAll(".row-location").forEach(sel => {
+    sel.insertAdjacentHTML("beforeend", `<option value="${loc.name}">${loc.name}</option>`);
+  });
+  // 1b. the row TEMPLATE itself — <template> content lives in an inert
+  // DocumentFragment that querySelectorAll on `document` never reaches,
+  // so without this, every future "+ Add Another" clone was missing
+  // newly-added locations until a full page reload.
+  rowTemplate.content.querySelectorAll(".row-location").forEach(sel => {
     sel.insertAdjacentHTML("beforeend", `<option value="${loc.name}">${loc.name}</option>`);
   });
   // 2. the overview filter dropdown
@@ -520,14 +550,22 @@ function addLocationEverywhere(loc) {
         <span class="location-sales-label">Total Sales</span>
         <span class="location-sales-value">&#8377;0</span>
       </div>
-      <div class="location-names" data-role="names"></div>
+      <button type="button" class="location-names-toggle" data-role="names-toggle" hidden>
+        <span data-role="names-toggle-label">Show volunteers</span>
+      </button>
+      <div class="location-names" data-role="names" hidden></div>
     </div>
   `);
+  wireNamesToggle(grid.lastElementChild);
   rebuildFilterMenusOnNextOpen();
 }
 
 function addEventEverywhere(evt) {
   document.querySelectorAll(".row-event").forEach(sel => {
+    sel.insertAdjacentHTML("beforeend", `<option value="${evt.name}">${evt.name}</option>`);
+  });
+  // template fix — same reasoning as addLocationEverywhere above
+  rowTemplate.content.querySelectorAll(".row-event").forEach(sel => {
     sel.insertAdjacentHTML("beforeend", `<option value="${evt.name}">${evt.name}</option>`);
   });
   document.getElementById("ov_event")
@@ -582,30 +620,26 @@ bulkDeleteBtn.addEventListener("click", async () => {
   if (!confirm(`Delete ${ids.length} assignment${ids.length !== 1 ? "s" : ""}? This cannot be undone.`)) return;
 
   bulkDeleteBtn.disabled = true;
-  showLoader();
   try {
     const result = await api("{{ url_for('users.volunteer_assignments_bulk_delete') }}", {
       method: "POST",
       body: JSON.stringify({ assignment_ids: ids }),
     });
 
-    result.ids.forEach(id => {
-      const row = assignmentsBody.querySelector(`tr[data-assignment-id="${id}"]`);
-      if (row) row.remove();
-    });
+    bulkCancelBtn.click(); // clear checkboxes/toolbar before repaint
 
-    if (!assignmentsBody.querySelectorAll("tr[data-assignment-id]").length) {
-      emptyHint.style.display = "";
-    }
+    // Refetch instead of manually removing rows from the DOM — this is
+    // what actually keeps Locations Overview (counts + sales) in sync
+    // with the deletion, since those numbers are computed server-side
+    // and aren't derivable from the deleted row IDs alone. Uses the
+    // local section spinners rather than the global overlay.
+    await refreshOverview(false, "section");
 
-    bulkCancelBtn.click();
-    applyFilters();
     toast(`${result.deleted} assignment(s) deleted.`, "success");
   } catch (err) {
     toast(err.message, "error");
   } finally {
     bulkDeleteBtn.disabled = false;
-    hideLoader();
   }
 });
 
@@ -624,6 +658,48 @@ function inrFormat(n) {
   return "\u20b9" + Math.round(n || 0).toLocaleString("en-IN");
 }
 
+/* ── Per-location volunteer sales breakdown: render + click-to-expand ── */
+function renderVolunteerNames(container, volunteerTotals) {
+  const entries = Object.entries(volunteerTotals || {}).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    container.innerHTML = `<p class="location-names-empty">No individual sales recorded.</p>`;
+    return;
+  }
+  container.innerHTML = `
+    <ul class="location-names-list">
+      ${entries.map(([name, amount]) => `
+        <li>
+          <span class="location-names-user">${name}</span>
+          <span class="location-names-amount">${inrFormat(amount)}</span>
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function wireNamesToggle(card) {
+  const toggle    = card.querySelector('[data-role="names-toggle"]');
+  const toggleLbl = card.querySelector('[data-role="names-toggle-label"]');
+  const namesEl   = card.querySelector('[data-role="names"]');
+  const location  = card.dataset.location;
+  const volunteerTotals = salesByLocationVolunteer[location];
+
+  if (!volunteerTotals || !Object.keys(volunteerTotals).length) {
+    toggle.hidden = true;
+    namesEl.hidden = true;
+    return;
+  }
+
+  toggle.hidden = false;
+  renderVolunteerNames(namesEl, volunteerTotals);
+
+  toggle.addEventListener("click", () => {
+    const isHidden = namesEl.hidden;
+    namesEl.hidden = !isHidden;
+    toggleLbl.textContent = isHidden ? "Hide volunteers" : "Show volunteers";
+  });
+}
+
 function renderLocationGrid(locations, ovLocationFilter, locationCounts, salesByLocation) {
   locationGrid.innerHTML = locations
     .filter(l => ovLocationFilter === "all" || ovLocationFilter === l.name)
@@ -639,10 +715,14 @@ function renderLocationGrid(locations, ovLocationFilter, locationCounts, salesBy
             <span class="location-sales-label">Total Sales</span>
             <span class="location-sales-value">${inrFormat(sales)}</span>
           </div>
-          <div class="location-names" data-role="names"></div>
+          <button type="button" class="location-names-toggle" data-role="names-toggle" hidden>
+            <span data-role="names-toggle-label">Show volunteers</span>
+          </button>
+          <div class="location-names" data-role="names" hidden></div>
         </div>
       `;
     }).join("");
+  locationGrid.querySelectorAll(".location-card").forEach(wireNamesToggle);
 }
 
 function renderAssignmentsTable(assignments) {
@@ -659,11 +739,27 @@ function renderAssignmentsTable(assignments) {
   rebuildFilterMenusOnNextOpen();
 }
 
-async function refreshOverview(pushUrl) {
+/**
+ * loaderMode: undefined/"global" -> full-page overlay (submit, filter apply/clear)
+ *             "section"          -> local Assignments/Overview spinners (bulk delete)
+ *             "silent"           -> no loader, no error toast (background poll)
+ */
+async function refreshOverview(pushUrl, loaderMode) {
   const params = currentFilterParams(overviewFilterForm);
-  showLoader();
+
+  if (loaderMode === "section") {
+    showAssignmentsLoader();
+    showOverviewLoader();
+  } else if (loaderMode !== "silent") {
+    showLoader();
+  }
+
   try {
     const data = await api(`/api/volunteer-assignment/overview?${params.toString()}`);
+
+    // Keep the per-volunteer sales breakdown current before repainting
+    // the grid — renderLocationGrid()/wireNamesToggle() read this.
+    salesByLocationVolunteer = data.ov_sales_by_location_volunteer || {};
 
     renderAssignmentsTable(data.assignments);
     renderLocationGrid(STATE.locations, data.ov_location, data.location_counts, data.ov_sales_by_location);
@@ -680,9 +776,14 @@ async function refreshOverview(pushUrl) {
       window.history.replaceState({}, "", url);
     }
   } catch (err) {
-    toast(err.message, "error");
+    if (loaderMode !== "silent") toast(err.message, "error");
   } finally {
-    hideLoader();
+    if (loaderMode === "section") {
+      hideAssignmentsLoader();
+      hideOverviewLoader();
+    } else if (loaderMode !== "silent") {
+      hideLoader();
+    }
   }
 }
 
@@ -704,6 +805,35 @@ clearFiltersBtn.addEventListener("click", () => {
 function rebuildFilterMenusOnNextOpen() {
   document.querySelectorAll(".th-filter-menu").forEach(menu => { menu.hidden = true; });
 }
+
+/* ── Background refresh: keeps Locations Overview + Current Assignments
+   fresh if another user/device makes changes. Silent — no spinner, no
+   error toast — so it never interrupts whatever the user is doing.
+   Paused while the tab isn't visible, and paused while the user is
+   mid-interaction (a filter menu open, or the Add modal open/focused)
+   so a poll can't yank focus or reset something in progress. ── */
+const OVERVIEW_POLL_MS = 20000;
+let overviewPollTimer = null;
+
+function isUserBusy() {
+  return document.querySelector(".th-filter-menu:not([hidden])") !== null
+    || addMasterOverlay.classList.contains("visible")
+    || document.activeElement === newMasterName;
+}
+
+function startOverviewPolling() {
+  if (overviewPollTimer) return;
+  overviewPollTimer = setInterval(() => {
+    if (document.hidden || isUserBusy()) return;
+    refreshOverview(false, "silent");
+  }, OVERVIEW_POLL_MS);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshOverview(false, "silent");
+});
+
+startOverviewPolling();
 
 /* ── Excel-style column filters: Current Assignments ─────────── */
 (function () {
@@ -847,6 +977,11 @@ function rebuildFilterMenusOnNextOpen() {
 
   renderFillerRows(getRealRows().length);
 })();
+
+/* Wire up click-to-expand for the location cards rendered server-side
+   on initial page load (the ones built by renderLocationGrid() wire
+   themselves up inside that function). */
+document.querySelectorAll("#locationGrid .location-card").forEach(wireNamesToggle);
 </script>
 
 <style>
@@ -882,6 +1017,91 @@ function rebuildFilterMenusOnNextOpen() {
           mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
   filter: drop-shadow(0 4px 10px rgba(11, 93, 74, 0.35));
   animation: fnrg-spin 0.8s linear infinite;
+}
+
+/* Inline button loading state — used on "Save Location/Event" so the
+   spinner sits in the button itself instead of the full-page overlay. */
+.btn-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  display: inline-block;
+  animation: fnrg-spin 0.7s linear infinite;
+}
+
+/* Section-local loaders — Current Assignments + Locations Overview.
+   Used only for the bulk-delete refetch so it dims just those two
+   cards instead of the whole page. [hidden] must win over the
+   flex display below or the spinner never actually disappears. */
+.section-relative { position: relative; }
+
+.section-loader {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  border-radius: var(--radius-md);
+}
+
+.section-loader[hidden] {
+  display: none;
+}
+
+.section-spinner {
+  width: 26px;
+  height: 26px;
+  border-width: 3px;
+  border-color: rgba(11, 93, 74, 0.2);
+  border-top-color: var(--teal-mid);
+}
+
+/* Per-location volunteer sales breakdown (click-to-expand) */
+.location-names-toggle {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: var(--teal-mid, #0e8f6f);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.location-names-toggle[hidden] { display: none; }
+
+.location-names-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.location-names-list li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.location-names-user { color: var(--text-secondary, #555); }
+.location-names-amount { font-weight: 500; }
+
+.location-names-empty {
+  font-size: 13px;
+  color: var(--text-secondary, #555);
+  margin: 8px 0 0;
 }
 </style>
 {% endblock %}

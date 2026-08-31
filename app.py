@@ -1,6 +1,7 @@
 from flask import Flask, session
 
 from config import Config
+from services.permissions import ROUTE_PERMISSIONS
 
 
 def create_app():
@@ -27,6 +28,18 @@ def create_app():
                 }
             }
         return {"current_user": None}
+
+    @app.context_processor
+    def inject_permissions():
+        """Makes `has_permission('action_name')` available in every
+        template (base.html uses it to hide nav links the current
+        role can't access). Reads the same ROUTE_PERMISSIONS table
+        the @permission_required route decorator checks, so the nav
+        and the actual route guard can never drift apart."""
+        def has_permission(action):
+            role = session.get("role")
+            return role is not None and role in ROUTE_PERMISSIONS.get(action, [])
+        return {"has_permission": has_permission}
 
     return app
 

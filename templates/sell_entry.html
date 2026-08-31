@@ -2,10 +2,19 @@
 {% block title %}Books & Sell Entry — FNRG Preaching{% endblock %}
 {% block page_title %}Books &amp; Sell Entry{% endblock %}
 
+<!-- Grand-total helper: sum of qty * sell_price across every row, computed
+     once at the top level so both the topbar block and the content block
+     below can reference it. (sum(attribute="sell_price") alone was wrong —
+     it ignored qty entirely.) -->
+{% set gt = namespace(value=0) %}
+{% for s in my_sales %}
+  {% set gt.value = gt.value + ((s.qty or 0) * (s.sell_price or 0)) %}
+{% endfor %}
+
 {% block topbar_extra %}
 <div class="topbar-total">
   <span class="topbar-total-label">Total Laxmi</span>
-  <span class="topbar-total-value" id="grandTotal">₹{{ "{:,.0f}".format(my_sales | sum(attribute="sell_price")) }}</span>
+  <span class="topbar-total-value" id="grandTotal">₹{{ "{:,.0f}".format(gt.value) }}</span>
 </div>
 {% endblock %}
 
@@ -66,18 +75,30 @@
 <section class="table-card">
   <div class="card-header-row">
     <h3>Sales History</h3>
+    {% if current_user and current_user.role == 'admin' %}
     <a href="{{ url_for('books.export_sell_entries') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
+    {% endif %}
   </div>
 
   <form method="GET" action="{{ url_for('books.sell_entry') }}" class="filter-bar" id="filterForm">
     <div class="field">
       <label for="se_user">User Name</label>
+      {% if current_user and current_user.role == 'admin' %}
       <select id="se_user" name="se_user">
         <option value="all" {{ 'selected' if sale_filters.user == 'all' }}>All Users</option>
         {% for u in users %}
         <option value="{{ u['username'] }}" {{ 'selected' if sale_filters.user == u['username'] }}>{{ u['username'] }}</option>
         {% endfor %}
       </select>
+      {% else %}
+      <!-- Non-admins can't browse other users' sales -- fixed to their
+           own username, not a selectable field. disabled= so it can't
+           be edited or submitted tampered-with; the hidden input below
+           is what actually carries the value, since disabled fields are
+           excluded from form submission / FormData entirely. -->
+      <input type="text" id="se_user" value="{{ current_user.username if current_user else '' }}" disabled readonly>
+      <input type="hidden" name="se_user" value="{{ current_user.username if current_user else '' }}">
+      {% endif %}
     </div>
     <div class="field">
       <label for="se_location">Location</label>
@@ -112,7 +133,6 @@
   </form>
 
   {% set total_qty = my_sales | sum(attribute="qty") %}
-  {% set total_sell_sum = my_sales | sum(attribute="sell_price") %}
   <div class="table-scroll-y">
     <table class="data-table" id="recentEntriesTable">
       <thead>
@@ -122,7 +142,7 @@
           <th>Location</th>
           <th>Event</th>
           <th><span class="th-with-total">Qty<span class="col-total-sup" title="Total quantity across these rows">&Sigma;{{ total_qty }}</span></span></th>
-          <th><span class="th-with-total">Sell Price<span class="col-total-sup" title="Total sell value across these rows">&Sigma;&#8377;{{ "{:,.0f}".format(total_sell_sum) }}</span></span></th>
+          <th><span class="th-with-total">Sell Price<span class="col-total-sup" title="Total sell value across these rows (qty × sell price)">&Sigma;&#8377;{{ "{:,.0f}".format(gt.value) }}</span></span></th>
           <th>Recorded By</th>
         </tr>
       </thead>
@@ -183,6 +203,11 @@
 {% block scripts %}
 <script>
   document.getElementById("date").valueAsDate = new Date();
+
+  // Set from the server -- only admins have a real se_user *selection* to
+  // filter on. Non-admins have a fixed, non-editable username field, so it
+  // should never count as an "active" filter in the UI.
+  const CAN_FILTER_USER = {{ 'true' if current_user and current_user.role == 'admin' else 'false' }};
 
   // Available stock per book id, e.g. {"7": 101, ...}. Reassigned after
   // every refreshTable() call so it stays current post-submit/filter,
@@ -343,8 +368,14 @@
         <td>${s.recorded_by_name  || s.seller || "—"}</td>
       </tr>`).join("");
 
-    const totalQty  = sales.reduce((sum, s) => sum + (Number(s.qty)        || 0), 0);
-    const totalSell = sales.reduce((sum, s) => sum + (Number(s.sell_price) || 0), 0);
+    // Grand/column total must be qty * sell_price per row, summed — NOT
+    // a plain sum of sell_price (that ignored quantity entirely, which
+    // was the bug: a 5-qty row at ₹100 was counted as ₹100 instead of ₹500).
+    const totalQty  = sales.reduce((sum, s) => sum + (Number(s.qty) || 0), 0);
+    const totalSell = sales.reduce(
+      (sum, s) => sum + (Number(s.qty) || 0) * (Number(s.sell_price) || 0),
+      0
+    );
     updateEntryTotals(totalQty, totalSell);
     if (noFilterMatch) noFilterMatch.style.display = "none";
   }
@@ -354,6 +385,7 @@
     const data = new FormData(filterForm);
     for (const [key, val] of data.entries()) {
       if (!val) continue;
+      if (key === "se_user" && !CAN_FILTER_USER) continue;  // fixed field, not a real filter
       if ((key === "se_user" || key === "se_event") && val === "all") continue;
       return true;
     }
