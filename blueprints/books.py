@@ -247,6 +247,45 @@ def sell_entry():
 
     return render_template("sell_entry.html", **context)
 
+
+@bp.route("/book-requests", methods=["POST"])
+@permission_required("book_request_create")
+def create_book_request():
+    payload = request.get_json(force=True) or {}
+    try:
+        result = post_json(_base_url(), "/api/book-requests", json=payload)
+    except BackendError as exc:
+        return jsonify({"ok": False, "message": f"Book request failed: {exc}"}), exc.status_code if exc.status_code < 500 else 502
+    return jsonify({"ok": True, "request": result})
+
+
+@bp.route("/book-requests/mine", methods=["GET"])
+@permission_required("book_request_create")
+def my_book_requests():
+    try:
+        return jsonify(get_json(_base_url(), "/api/book-requests/mine") or [])
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@bp.route("/book-requests/history", methods=["GET"])
+@permission_required("book_request_history")
+def book_request_history():
+    try:
+        return jsonify(get_json(_base_url(), "/api/book-requests/history") or [])
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@bp.route("/book-requests/<request_id>/approve", methods=["POST"])
+@permission_required("book_request_history")
+def approve_book_request(request_id):
+    try:
+        result = post_json(_base_url(), f"/api/book-requests/{request_id}/approve", json={})
+    except BackendError as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify(result)
+
 @bp.route("/sell-entry/export")
 @permission_required("admin_tools")
 def export_sell_entries():

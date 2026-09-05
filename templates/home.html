@@ -127,7 +127,7 @@
         {% for b in inventory %}
         <tr data-title="{{ b.title }}">
           <td class="col-left">{{ b.title }}</td>
-          <td class="stock-cell {{ 'text-red' if b.below_threshold else 'text-green' }}">
+          <td class="stock-cell {{ 'text-red' if b.below_threshold else 'text-green' }}" data-available="{{ b.available }}">
             {{ b.available }}{% if b.below_threshold %} &#9888; low{% endif %}
           </td>
           <td>
@@ -329,10 +329,13 @@
       if (!resp.ok || !data.ok) throw new Error(data.message || 'Update failed');
 
       const stockCell = row.querySelector('.stock-cell');
-      if (stockCell && data.available !== undefined && data.below_threshold !== undefined) {
-        stockCell.classList.toggle('text-red', !!data.below_threshold);
-        stockCell.classList.toggle('text-green', !data.below_threshold);
-        stockCell.innerHTML = `${data.available}${data.below_threshold ? ' &#9888; low' : ''}`;
+      if (stockCell) {
+        const available = Number(stockCell.dataset.available || 0);
+        const threshold = Number(form.querySelector('input[name="threshold"]').value || 0);
+        const belowThreshold = available <= threshold;
+        stockCell.classList.toggle('text-red', belowThreshold);
+        stockCell.classList.toggle('text-green', !belowThreshold);
+        stockCell.innerHTML = `${available}${belowThreshold ? ' &#9888; low' : ''}`;
       }
       btn.textContent = 'Saved ✓';
       setTimeout(() => { btn.textContent = originalLabel; }, 1200);

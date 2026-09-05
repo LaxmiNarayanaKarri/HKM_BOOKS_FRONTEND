@@ -10,9 +10,11 @@ def create_app():
 
     from blueprints.users import bp as users_bp
     from blueprints.books import bp as books_bp
+    from blueprints.nidhi import bp as nidhi_bp
 
     app.register_blueprint(users_bp)
     app.register_blueprint(books_bp)
+    app.register_blueprint(nidhi_bp)
 
     @app.context_processor
     def inject_current_user():

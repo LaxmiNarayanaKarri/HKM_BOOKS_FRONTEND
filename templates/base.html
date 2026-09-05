@@ -23,13 +23,13 @@
       <nav class="sidebar-nav">
         {% if has_permission('dashboard_view') %}
         <a href="{{ url_for('books.dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'books.dashboard' }}">
-          <span class="nav-icon">&#9635;</span><span class="nav-label">Dashboard & Analytics</span>
+          <span class="nav-icon">&#128202;</span><span class="nav-label">Dashboard & Analytics</span>
         </a>
         {% endif %}
 
         {% if has_permission('sell_entry_write') %}
         <a href="{{ url_for('books.sell_entry') }}" class="nav-link {{ 'active' if request.endpoint == 'books.sell_entry' }}">
-          <span class="nav-icon">&#128214;</span><span class="nav-label">Books &amp; Sell Entry</span>
+          <span class="nav-icon">&#128218;</span><span class="nav-label">Books &amp; Sell Entry</span>
         </a>
         {% endif %}
 
@@ -41,20 +41,24 @@
 
         {% if has_permission('volunteer_assignment_view') %}
         <a href="{{ url_for('users.volunteer_assignment') }}" class="nav-link {{ 'active' if request.endpoint == 'users.volunteer_assignment' }}">
-          <span class="nav-icon">&#129485;</span><span class="nav-label">Volunteer Assignment</span>
+          <span class="nav-icon">&#128101;</span><span class="nav-label">Volunteer Assignment</span>
         </a>
         {% endif %}
 
         {% if has_permission('user_management') %}
         <a href="{{ url_for('users.user_management') }}" class="nav-link {{ 'active' if request.endpoint == 'users.user_management' }}">
-          <span class="nav-icon">&#128101;</span><span class="nav-label">User Management</span>
+          <span class="nav-icon">&#128100;</span><span class="nav-label">User Management</span>
         </a>
         {% endif %}
+
+        <a href="{{ url_for('nidhi.nidhi_dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'nidhi.nidhi_dashboard' }}">
+          <span class="nav-icon">&#128176;</span><span class="nav-label">Tirtha Nidhi</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
         <a href="{{ url_for('users.logout') }}" class="nav-link logout-link">
-          <span class="nav-icon">&#9099;</span><span class="nav-label">Logout</span>
+          <span class="nav-icon">&#10145;</span><span class="nav-label">Logout</span>
         </a>
       </div>
     </aside>
@@ -62,7 +66,7 @@
     <!-- Main column -->
     <div class="main-col">
       <header class="topbar">
-        <button class="collapse-btn" id="collapseBtn" aria-label="Toggle sidebar">&#9776;</button>
+        <button class="collapse-btn" id="collapseBtn" aria-label="Toggle sidebar" aria-expanded="true">&#9776;</button>
         <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
         {% block topbar_extra %}{% endblock %}
 
@@ -79,7 +83,7 @@
               <span class="user-badge">{{ current_user.role }}</span>
             </div>
             <a href="{{ url_for('users.logout') }}" class="user-menu-logout">
-              <span class="nav-icon">&#9099;</span> Logout
+              <span class="nav-icon">&#10145;</span> Logout
             </a>
           </div>
         </div>
@@ -147,7 +151,12 @@
 
       toggleBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        sidebar.classList.contains('mobile-open') ? closeSidebar() : openSidebar();
+        if (window.innerWidth <= 900) {
+          sidebar.classList.contains('mobile-open') ? closeSidebar() : openSidebar();
+        } else {
+          var collapsed = sidebar.classList.toggle('collapsed');
+          toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        }
       });
 
       overlay.addEventListener('click', closeSidebar);
@@ -157,7 +166,10 @@
       });
 
       window.addEventListener('resize', function () {
-        if (window.innerWidth > 900) closeSidebar();
+        if (window.innerWidth > 900) {
+          closeSidebar();
+          toggleBtn.setAttribute('aria-expanded', sidebar.classList.contains('collapsed') ? 'false' : 'true');
+        }
       });
 
       // --- User menu dropdown (topbar) ---

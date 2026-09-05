@@ -21,7 +21,12 @@
 {% block content %}
 
 <section class="form-card">
-  <h3>New Sale</h3>
+  <div class="card-header-row">
+    <h3>New Sale</h3>
+    {% if current_user and current_user.role == 'admin' %}
+    <button type="button" class="btn-toggle" onclick="openModal('modal-book-request')" title="Request books" aria-label="Request books">&#128218; Request books</button>
+    {% endif %}
+  </div>
   <form method="POST" action="{{ url_for('books.sell_entry') }}" class="stacked-form" id="sellForm">
 
     <div class="batch-meta cols-3">
@@ -72,14 +77,68 @@
   </form>
 </section>
 
+<div class="modal-overlay" id="modal-book-request">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Request books</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-book-request')">&times;</button>
+    </div>
+    <form id="book-request-form" class="modal-form">
+      <div class="field">
+        <label for="request-book">Book title</label>
+        <select id="request-book" required>
+          <option value="" disabled selected>Select a book</option>
+          {% for b in book_titles %}<option value="{{ b['id'] }}">{{ b['title'] }}{% if b.get('short_title') %} - {{ b['short_title'] }}{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="request-quantity">Quantity</label>
+        <input id="request-quantity" type="number" min="1" step="1" required>
+      </div>
+      <div class="field">
+        <label for="request-location">Location</label>
+        <select id="request-location" required>
+          <option value="" disabled selected>Select a location</option>
+          {% for l in locations %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="request-event">Event</label>
+        <select id="request-event" required>
+          <option value="" disabled selected>Select an event</option>
+          {% for e in events %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="request-priority">Priority</label>
+        <select id="request-priority" required>
+          <option value="cant_wait">Can't wait</option>
+          <option value="important">Important</option>
+          <option value="immediate">Immediate</option>
+        </select>
+      </div>
+      <div class="nidhi-form-error" id="book-request-error"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn-filter" id="book-request-submit">Submit request</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <section class="table-card">
   <div class="card-header-row">
-    <h3>Sales History</h3>
-    {% if current_user and current_user.role == 'admin' %}
-    <a href="{{ url_for('books.export_sell_entries') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>
-    {% endif %}
+    <div class="history-heading">
+      <div class="history-switches">
+        <button type="button" class="btn-toggle history-switch active" id="sales-history-btn">Sales history</button>
+        <button type="button" class="btn-toggle history-switch" id="book-request-history-btn">Book request <span class="request-pending-count" id="book-request-pending-count">0</span></button>
+      </div>
+    </div>
+    <div class="header-actions">
+      {% if current_user and current_user.role == 'admin' %}<a href="{{ url_for('books.export_sell_entries') }}?{{ request.query_string.decode() }}" class="link-download">Download .xlsx &darr;</a>{% endif %}
+    </div>
   </div>
 
+  <div id="sales-history-view">
   <form method="GET" action="{{ url_for('books.sell_entry') }}" class="filter-bar" id="filterForm">
     <div class="field">
       <label for="se_user">User Name</label>
@@ -166,6 +225,13 @@
     </table>
     <p class="empty-cell" id="noFilterMatch" style="display:none;">No entries match the current filters.</p>
   </div>
+  </div>
+  <div id="book-request-history-view" hidden>
+    <div class="table-card-header request-history-toolbar">
+      <button type="button" class="btn-toggle" id="download-book-requests">Download CSV</button>
+    </div>
+    <div class="table-scroll-y" id="book-request-history-table"><p class="empty-cell">Loading requests…</p></div>
+  </div>
 </section>
 
 <!-- Hidden template for one book row — cloned by JS for "Add Another Book" -->
@@ -202,6 +268,136 @@
 
 {% block scripts %}
 <script>
+  function openModal(id) { document.getElementById(id).classList.add('visible'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('visible'); }
+
+  document.getElementById('book-request-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const submit = document.getElementById('book-request-submit');
+    const error = document.getElementById('book-request-error');
+    error.textContent = '';
+    submit.disabled = true;
+    submit.textContent = 'Submitting…';
+    try {
+      const response = await fetch('{{ url_for("books.create_book_request") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          book_id: Number(document.getElementById('request-book').value),
+          quantity: Number(document.getElementById('request-quantity').value),
+          location_id: Number(document.getElementById('request-location').value),
+          event_id: Number(document.getElementById('request-event').value),
+          priority: document.getElementById('request-priority').value
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || 'Could not submit book request.');
+      form.reset();
+      closeModal('modal-book-request');
+      showFlash('Book request submitted.', 'success');
+    } catch (errorValue) {
+      error.textContent = errorValue.message;
+    } finally {
+      submit.disabled = false;
+      submit.textContent = 'Submit request';
+    }
+  });
+
+  function requestLabel(select, value) {
+    const option = Array.from(select.options).find(item => String(item.value) === String(value));
+    return option ? option.textContent.trim() : value || '—';
+  }
+
+  function formatRequestDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true
+    });
+  }
+
+  function requestTableCSV() {
+    const table = document.querySelector('#book-request-history-table table');
+    if (!table) {
+      showFlash('Load book requests before downloading.', 'danger');
+      return;
+    }
+    const rows = Array.from(table.rows).map(row => Array.from(row.cells)
+      .filter(cell => !cell.querySelector('.book-request-approve'))
+      .map(cell => '"' + cell.textContent.trim().replace(/"/g, '""') + '"').join(','))
+      .join('\r\n');
+    const blob = new Blob(['\uFEFF' + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'book-request-history.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  }
+
+  const IS_ADMIN = {{ 'true' if current_user and current_user.role == 'admin' else 'false' }};
+  let bookRequestsLoaded = false;
+
+  async function loadBookRequestHistory() {
+    const container = document.getElementById('book-request-history-table');
+    container.innerHTML = '<p class="empty-cell">Loading history…</p>';
+    try {
+      const response = await fetch(IS_ADMIN ? '{{ url_for("books.book_request_history") }}' : '{{ url_for("books.my_book_requests") }}');
+      const requests = await response.json();
+      if (!response.ok) throw new Error(requests.error || 'Could not load request history.');
+      const bookSelect = document.getElementById('request-book');
+      const locationSelect = document.getElementById('request-location');
+      const eventSelect = document.getElementById('request-event');
+      const pendingCount = requests.filter(item => item.status === 'pending').length;
+      document.getElementById('book-request-pending-count').textContent = pendingCount;
+      container.innerHTML = requests.length ? `<table class="data-table"><thead><tr><th>Book</th><th>Qty</th><th>Location</th><th>Event</th><th>Priority</th><th>Requested by</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>${requests.map(item => `<tr><td>${requestLabel(bookSelect, item.book_id)}</td><td>${item.quantity}</td><td>${requestLabel(locationSelect, item.location_id)}</td><td>${requestLabel(eventSelect, item.event_id)}</td><td>${item.priority.replace('_', ' ')}</td><td>${item.requested_by}</td><td>${item.status}</td><td>${formatRequestDate(item.created_at)}</td><td>${IS_ADMIN && item.status === 'pending' ? `<button type="button" class="btn-toggle book-request-approve" data-request-id="${item.id}">Approve</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="empty-cell">No book requests yet.</p>';
+      bookRequestsLoaded = true;
+      container.querySelectorAll('.book-request-approve').forEach(button => {
+        button.addEventListener('click', () => approveBookRequest(button));
+      });
+    } catch (errorValue) {
+      container.innerHTML = `<p class="empty-cell">${errorValue.message}</p>`;
+    }
+  }
+
+  async function approveBookRequest(button) {
+    button.disabled = true;
+    button.textContent = 'Approving…';
+    try {
+      const response = await fetch('{{ url_for("books.approve_book_request", request_id="REQUEST_ID") }}'.replace('REQUEST_ID', button.dataset.requestId), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not approve request.');
+      bookRequestsLoaded = false;
+      await loadBookRequestHistory();
+    } catch (errorValue) {
+      button.disabled = false;
+      button.textContent = 'Approve';
+      showFlash(errorValue.message, 'danger');
+    }
+  }
+
+  function showHistoryView(view) {
+    const salesView = document.getElementById('sales-history-view');
+    const requestsView = document.getElementById('book-request-history-view');
+    const salesButton = document.getElementById('sales-history-btn');
+    const requestsButton = document.getElementById('book-request-history-btn');
+    const title = document.getElementById('history-title');
+    const showingRequests = view === 'requests';
+    salesView.hidden = showingRequests;
+    requestsView.hidden = !showingRequests;
+    salesButton.classList.toggle('active', !showingRequests);
+    requestsButton.classList.toggle('active', showingRequests);
+    if (showingRequests && !bookRequestsLoaded) loadBookRequestHistory();
+  }
+
+  document.getElementById('sales-history-btn').addEventListener('click', () => showHistoryView('sales'));
+  document.getElementById('book-request-history-btn').addEventListener('click', () => showHistoryView('requests'));
+  document.getElementById('download-book-requests').addEventListener('click', requestTableCSV);
+  loadBookRequestHistory();
+
   document.getElementById("date").valueAsDate = new Date();
 
   // Set from the server -- only admins have a real se_user *selection* to

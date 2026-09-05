@@ -418,6 +418,32 @@ body.app-body {
   transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
+.flash-success {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.flash-error,
+.flash-danger {
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+}
+
+.flash-warning {
+  color: #854d0e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+}
+
+.flash-info,
+.flash-message {
+  color: #1e3a8a;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+
 .flash.flash-hide {
   opacity: 0;
   transform: translateX(20px);
@@ -645,6 +671,103 @@ body.app-body {
    (~38px) + 8 body rows (~42px each) ≈ 374px. */
 .table-scroll-y.rows-8 {
   max-height: 374px;
+}
+
+.request-history-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+#book-request-history-table .data-table {
+  min-width: 980px;
+  table-layout: auto;
+}
+
+#book-request-history-table .data-table th,
+#book-request-history-table .data-table td {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+#book-request-history-table .data-table th:nth-child(1),
+#book-request-history-table .data-table td:nth-child(1) {
+  min-width: 220px;
+}
+
+#book-request-history-table .data-table th:nth-child(3),
+#book-request-history-table .data-table td:nth-child(3),
+#book-request-history-table .data-table th:nth-child(4),
+#book-request-history-table .data-table td:nth-child(4) {
+  min-width: 150px;
+}
+
+#book-request-history-table .data-table th:nth-child(5),
+#book-request-history-table .data-table td:nth-child(5),
+#book-request-history-table .data-table th:nth-child(6),
+#book-request-history-table .data-table td:nth-child(6) {
+  min-width: 120px;
+}
+
+#book-request-history-table .data-table th:nth-child(8),
+#book-request-history-table .data-table td:nth-child(8) {
+  min-width: 180px;
+}
+
+#book-request-history-table .data-table th:last-child,
+#book-request-history-table .data-table td:last-child {
+  min-width: 96px;
+  text-align: center;
+}
+
+/* Inward Stock has ten columns; keep its headers readable and let the
+   table scroll horizontally instead of compressing every column. */
+#recentPurchasesTable {
+  min-width: 1180px;
+}
+
+#recentPurchasesTable th,
+#recentPurchasesTable td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#recentPurchasesTable th:nth-child(1),
+#recentPurchasesTable td:nth-child(1) {
+  min-width: 125px;
+}
+
+#recentPurchasesTable th:nth-child(2),
+#recentPurchasesTable td:nth-child(2) {
+  min-width: 210px;
+}
+
+#recentPurchasesTable th:nth-child(3),
+#recentPurchasesTable td:nth-child(3) {
+  min-width: 125px;
+}
+
+#recentPurchasesTable th:nth-child(4),
+#recentPurchasesTable td:nth-child(4),
+#recentPurchasesTable th:nth-child(5),
+#recentPurchasesTable td:nth-child(5),
+#recentPurchasesTable th:nth-child(6),
+#recentPurchasesTable td:nth-child(6) {
+  min-width: 120px;
+}
+
+#recentPurchasesTable th:nth-child(7),
+#recentPurchasesTable td:nth-child(7),
+#recentPurchasesTable th:nth-child(8),
+#recentPurchasesTable td:nth-child(8),
+#recentPurchasesTable th:nth-child(9),
+#recentPurchasesTable td:nth-child(9) {
+  min-width: 105px;
+}
+
+#recentPurchasesTable th:nth-child(10),
+#recentPurchasesTable td:nth-child(10) {
+  min-width: 140px;
 }
 
 .empty-cell {
@@ -1236,6 +1359,42 @@ body.app-body {
   background: rgba(14, 143, 111, 0.06);
 }
 
+.history-switch.active {
+  color: #fff;
+  border-color: var(--teal-dark);
+  background: var(--teal-dark);
+}
+
+.history-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-heading h3 {
+  margin-bottom: 0;
+}
+
+.history-switches {
+  display: flex;
+  gap: 6px;
+}
+
+.request-pending-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--red);
+  font-size: 0.68rem;
+}
+
 .btn-danger {
   color: var(--red, #c0392b);
   border-color: var(--red, #c0392b);
@@ -1655,6 +1814,17 @@ body.no-scroll {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.modal-panel-wide {
+  width: 96%;
+  max-width: 1200px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.modal-panel-wide .table-scroll-y {
+  overflow-x: auto;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -1755,6 +1925,10 @@ body.no-scroll {
 @media (max-width: 480px) {
   .modal-panel {
     padding: 18px;
+  }
+  .modal-panel-wide {
+    width: 98%;
+    padding: 14px;
   }
   .type-toggle {
     flex-direction: column;
@@ -2108,4 +2282,291 @@ body.no-scroll {
 
 .loading-row .empty-cell {
   color: var(--muted-text, #777);
+}
+
+/* ======================================================================
+   Tirtha Nidhi dashboard
+   ====================================================================== */
+
+.nidhi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.nidhi-balance-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  box-shadow: 0 4px 14px rgba(11, 93, 74, 0.05);
+}
+
+.nidhi-balance-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.nidhi-balance-value {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 8px 0 4px;
+  color: var(--teal-dark);
+}
+
+.nidhi-balance-value.accent-green { color: var(--green-bright); }
+.nidhi-balance-value.accent-amber { color: var(--amber); }
+
+.nidhi-balance-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.nidhi-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Pending-requests count on the "Review pending requests" button --
+   same visual language as .col-total-sup / .role-pill elsewhere. */
+.nidhi-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  margin-left: 6px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  border-radius: 999px;
+}
+
+.nidhi-table .credit { color: var(--green-bright); font-weight: 700; }
+.nidhi-table .debit { color: var(--red); font-weight: 700; }
+
+.nidhi-table .archived-row { opacity: 0.6; }
+
+.nidhi-table .badge-archived {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+}
+
+/* Approvals list, inside a .modal-panel */
+.approval-row {
+  border-bottom: 1px solid var(--border-soft);
+  padding: 14px 0;
+}
+.approval-row:last-child { border-bottom: none; }
+
+.approval-summary {
+  font-size: 0.9rem;
+  color: #2c2c2c;
+}
+
+.approval-reason {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.redeem-review-amount {
+  display: block;
+  box-sizing: border-box;
+  width: 112px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  text-align: right;
+  font: inherit;
+}
+
+.redeem-review-amount:focus {
+  border-color: var(--teal-mid);
+  outline: 2px solid rgba(14, 143, 111, 0.15);
+}
+
+.redeem-review-limit {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.redeem-review-table {
+  min-width: 980px;
+}
+
+.redeem-review-table th,
+.redeem-review-table td {
+  vertical-align: top;
+}
+
+.redeem-review-table th:nth-child(1),
+.redeem-review-table td:nth-child(1) {
+  min-width: 126px;
+}
+
+.redeem-review-table th:nth-child(2),
+.redeem-review-table th:nth-child(3),
+.redeem-review-table th:nth-child(4),
+.redeem-review-table td:nth-child(2),
+.redeem-review-table td:nth-child(3),
+.redeem-review-table td:nth-child(4) {
+  min-width: 132px;
+}
+
+.redeem-review-table th:nth-child(5),
+.redeem-review-table td:nth-child(5) {
+  min-width: 150px;
+  max-width: 220px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.redeem-review-table th:nth-child(6),
+.redeem-review-table td:nth-child(6) {
+  min-width: 110px;
+}
+
+.redeem-review-table th:last-child,
+.redeem-review-table td:last-child {
+  min-width: 176px;
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  background: #fff;
+  box-shadow: -6px 0 10px rgba(15, 23, 42, 0.08);
+}
+
+.redeem-review-table th:last-child {
+  z-index: 4;
+}
+
+.redeem-review-table .approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 0;
+}
+
+.redeem-review-table .approval-actions .btn-toggle {
+  flex: 1 1 78px;
+  min-width: 78px;
+}
+
+.redeem-review-total {
+  white-space: nowrap;
+}
+
+.nidhi-form-error {
+  color: var(--red);
+  font-size: 0.82rem;
+  margin-bottom: 10px;
+  min-height: 1em;
+}
+
+.nidhi-balance-card-total {
+  background: rgba(201, 138, 42, 0.06);
+  border-color: rgba(201, 138, 42, 0.35);
+}
+
+
+.field-hint {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+#r-total-display {
+  margin-top: 4px;
+  text-align: left;
+}
+
+@media (max-width: 640px) {
+  .nidhi-balance-value { font-size: 1.6rem; }
+  .nidhi-actions { flex-direction: column; align-items: stretch; }
+  .nidhi-actions .btn,
+  .nidhi-actions .btn-toggle { width: 100%; text-align: center; }
+}
+
+/* ======================================================================
+   User-selection dropdown — contribute / redeem modals (.modal-form)
+   ====================================================================== */
+
+.modal-form select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 12px 40px 12px 13px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--teal-dark);
+  background-color: #fff;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+  /* Inline chevron so no extra asset is needed */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a7a5c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px;
+}
+
+.modal-form select:hover {
+  border-color: var(--teal-mid);
+}
+
+.modal-form select:focus {
+  border-color: var(--teal-mid);
+  box-shadow: 0 0 0 3px rgba(14, 143, 111, 0.15);
+}
+
+.modal-form select:invalid {
+  color: var(--text-muted);
+}
+
+.modal-form select option {
+  color: var(--teal-dark);
+}
+
+.modal-form select:disabled {
+  background-color: #f6f4ec;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .modal-form select {
+    padding: 13px 40px 13px 13px;
+    font-size: 16px; /* prevents iOS Safari zoom-on-focus */
+  }
 }

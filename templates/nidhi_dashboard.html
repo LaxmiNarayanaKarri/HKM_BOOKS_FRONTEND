@@ -1,0 +1,1227 @@
+{% extends layout|default('base.html') %}
+{% block title %}Tirtha Nidhi · FNRG Preaching{% endblock %}
+{% block page_title %}Tirtha Nidhi{% endblock %}
+
+{#
+  Context this template expects from the Flask route:
+    tirtha_amount, contribution_amount, tirtha_updated_at, contribution_updated_at
+    recent_transactions        -- list, all-users recent activity (unchanged)
+    users                      -- list of {"id","label"}, CURRENT USER ALREADY EXCLUDED
+    my_pending_contributions   -- list of PENDING contribution txns where user_id == current user
+                                   (these are offered TO the current user to approve/reject)
+    can_review_redemptions     -- bool, whether to show the "Redeem review" entry point
+    pending_redemptions        -- list of PENDING redemption txns, all users
+                                   (only meaningful / only passed when can_review_redemptions)
+
+  ASSUMPTION: the Flask route computes can_review_redemptions from
+  session.get("role") in roles_for("nidhi_approve") (services/permissions.py),
+  mirroring the hard @permission_required("nidhi_approve") guard already on
+  the redemption routes.
+#}
+
+{% macro user_combobox(name, field_id, users, required=True, selected_id='', selected_label='') %}
+<div class="user-combobox" data-combobox>
+  <input type="text"
+         class="combobox-input"
+         id="{{ field_id }}-q"
+         value="{{ selected_label }}"
+         placeholder="Type a name…"
+         autocomplete="off"
+         {{ 'required' if required }}>
+  <input type="hidden" name="{{ name }}" id="{{ field_id }}" value="{{ selected_id }}">
+  <div class="combobox-list" id="{{ field_id }}-list" hidden>
+    {% for u in users %}
+    <div class="combobox-option" data-id="{{ u.id }}">{{ u.label }}</div>
+    {% endfor %}
+    <div class="combobox-empty" hidden>No matching users</div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro fund_select(name, field_id, selected='') %}
+<select name="{{ name }}" id="{{ field_id }}" required>
+  <option value="" disabled {{ 'selected' if not selected }}>Select a fund…</option>
+  <option value="tirtha_nidhi" {{ 'selected' if selected == 'tirtha_nidhi' }}>Tirtha Nidhi</option>
+  <option value="contribution_nidhi" {{ 'selected' if selected == 'contribution_nidhi' }}>Contribution Nidhi</option>
+</select>
+{% endmacro %}
+
+{% macro balances_section(tirtha_amount, contribution_amount, tirtha_updated_at=None, contribution_updated_at=None) %}
+{% set tirtha_amount = tirtha_amount or 0 %}
+{% set contribution_amount = contribution_amount or 0 %}
+<div class="nidhi-grid">
+  <div class="nidhi-balance-card">
+    <div class="nidhi-balance-label">Tirtha Nidhi</div>
+    <div class="nidhi-balance-value">
+      &#8377;{{ "%.2f"|format(tirtha_amount) }}
+    </div>
+    <div class="nidhi-balance-meta">
+      Updated {{ tirtha_updated_at.strftime('%d %b %Y, %I:%M %p') if tirtha_updated_at else '—' }} · fed by book-sale profit
+    </div>
+  </div>
+  <div class="nidhi-balance-card">
+    <div class="nidhi-balance-label">Contribution Nidhi</div>
+    <div class="nidhi-balance-value accent-green">
+      &#8377;{{ "%.2f"|format(contribution_amount) }}
+    </div>
+    <div class="nidhi-balance-meta">
+      Updated {{ contribution_updated_at.strftime('%d %b %Y, %I:%M %p') if contribution_updated_at else '—' }} · fed by approved contributions
+    </div>
+  </div>
+  <div class="nidhi-balance-card nidhi-balance-card-total">
+    <div class="nidhi-balance-label">Total</div>
+    <div class="nidhi-balance-value accent-amber">
+      &#8377;{{ "%.2f"|format(tirtha_amount + contribution_amount) }}
+    </div>
+    <div class="nidhi-balance-meta">
+      Tirtha Nidhi + Contribution Nidhi combined
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro transactions_table(rows, table_id, archived_rows=[], download_name='nidhi-transactions.csv') %}
+<div class="table-card">
+  <div class="table-card-header">
+    <div class="activity-controls">
+      <button type="button" class="btn-toggle btn-download"
+              onclick="downloadTableCSV('#{{ table_id }} table', '{{ download_name }}')">
+        Download CSV
+      </button>
+      <label>Rows
+        <select class="activity-row-count" aria-label="Rows to show">
+          <option value="5">5</option>
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="all">All</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  {% if rows or archived_rows %}
+  <div class="table-scroll-y rows-8" id="{{ table_id }}">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th class="sortable-header" data-sort-key="created">Created</th>
+          <th class="sortable-header" data-sort-key="decided">Decided</th>
+          <th class="sortable-header" data-sort-key="fund">Nidhi</th>
+          <th class="sortable-header num" data-sort-key="tirtha-amount">Tirtha amount</th>
+          <th class="sortable-header num" data-sort-key="contribution-amount">Contribution amount</th>
+          <th class="sortable-header" data-sort-key="type">Type</th>
+          <th class="sortable-header" data-sort-key="note">Note</th>
+          <th class="sortable-header" data-sort-key="status">Status</th>
+          <th>Decided by</th>
+          <th class="sortable-header num" data-sort-key="amount">Amount</th>
+          <th class="sortable-header num" data-sort-key="balance">Balance after</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in rows %}
+        <tr>
+          <td data-sort-value="{{ t.created_at.isoformat() }}">{{ t.created_at.strftime('%d %b, %I:%M %p') }}</td>
+          <td data-sort-value="{{ t.decided_at.isoformat() if t.decided_at else '' }}">{{ t.decided_at.strftime('%d %b, %I:%M %p') if t.decided_at else '—' }}</td>
+          <td data-sort-value="{{ t.fund_type.value }}">{{ 'Tirtha' if t.fund_type.value == 'tirtha_nidhi' else 'Contribution' }}</td>
+          <td class="num" data-sort-value="{{ t.tirtha_amount }}">&#8377;{{ "%.2f"|format(t.tirtha_amount) }}</td>
+          <td class="num" data-sort-value="{{ t.contribution_amount }}">&#8377;{{ "%.2f"|format(t.contribution_amount) }}</td>
+          <td data-sort-value="{{ t.type.value }}">{{ t.type.value.replace('_',' ')|title }}</td>
+          <td data-sort-value="{{ t.decision_note or t.note or '' }}">{{ t.decision_note or t.note or '—' }}</td>
+          <td data-sort-value="{{ t.status.value }}"><span class="transaction-status status-{{ t.status.value|lower }}">{{ t.status.value|title }}</span></td>
+          <td>{{ t.decided_by or t.user_id }}</td>
+          <td class="num {{ 'credit' if t.type.value == 'contribution' else 'debit' }}" data-sort-value="{{ t.amount }}">
+            {{ '+' if t.type.value == 'contribution' else '−' }}&#8377;{{ "%.2f"|format(t.amount) }}
+          </td>
+          <td class="num" data-sort-value="{{ t.balance_after if t.status.value == 'approved' and t.balance_after is not none else '' }}">
+            {% if t.status.value == 'approved' and t.balance_after is not none %}&#8377;{{ "%.2f"|format(t.balance_after) }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% for a in archived_rows %}
+        <tr class="archived-row">
+          <td data-sort-value="{{ a.created_at.isoformat() }}">{{ a.created_at.strftime('%d %b, %I:%M %p') }}</td>
+          <td data-sort-value="{{ a.decided_at.isoformat() if a.decided_at else '' }}">{{ a.decided_at.strftime('%d %b, %I:%M %p') if a.decided_at else '—' }}</td>
+          <td data-sort-value="{{ a.fund_type.value }}">{{ 'Tirtha' if a.fund_type.value == 'tirtha_nidhi' else 'Contribution' }}</td>
+          <td class="num" data-sort-value="{{ a.tirtha_amount }}">&#8377;{{ "%.2f"|format(a.tirtha_amount) }}</td>
+          <td class="num" data-sort-value="{{ a.contribution_amount }}">&#8377;{{ "%.2f"|format(a.contribution_amount) }}</td>
+          <td data-sort-value="{{ a.type.value }}">{{ a.type.value.replace('_',' ')|title }} <span class="badge-archived">archived</span></td>
+          <td data-sort-value="{{ a.decision_note or a.note or '' }}">{{ a.decision_note or a.note or '—' }}</td>
+          <td data-sort-value="{{ a.status.value }}"><span class="transaction-status status-{{ a.status.value|lower }}">{{ a.status.value|title }}</span></td>
+          <td>{{ a.decided_by or a.user_id }}</td>
+          <td class="num {{ 'credit' if a.type.value == 'contribution' else 'debit' }}" data-sort-value="{{ a.amount }}">
+            {{ '+' if a.type.value == 'contribution' else '−' }}&#8377;{{ "%.2f"|format(a.amount) }}
+          </td>
+          <td class="num" data-sort-value="{{ a.balance_after if a.status.value == 'approved' and a.balance_after is not none else '' }}">
+            {% if a.status.value == 'approved' and a.balance_after is not none %}&#8377;{{ "%.2f"|format(a.balance_after) }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-cell">No transactions yet. A book sale or an approved contribution will show up here.</div>
+  <table hidden id="{{ table_id }}"><table></table></table>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{#
+  My pending contributions: read-only, approve/reject only. The recipient
+  cannot edit amount / fund / user here — only decide.
+#}
+{% macro my_pending_list(pending) %}
+<div class="table-card">
+  <div class="table-card-header">
+    <button type="button" class="btn-toggle btn-download"
+            onclick="downloadTableCSV('#my-pending-table table', 'my-pending-contributions.csv')">
+      Download CSV
+    </button>
+  </div>
+  {% if pending %}
+  <div id="my-pending-table">
+    <table class="data-table">
+      <thead>
+        <tr><th>When</th><th>Nidhi</th><th>From</th><th class="num">Amount</th><th>Note</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for req in pending %}
+        <tr data-request-id="{{ req.id }}">
+          <td>{{ req.created_at.strftime('%d %b, %I:%M %p') }}</td>
+          <td>{{ 'Tirtha' if req.fund_type.value == 'tirtha_nidhi' else 'Contribution' }}</td>
+          <td>{{ req.requested_by }}</td>
+          <td class="num credit">+&#8377;{{ "%.2f"|format(req.amount) }}</td>
+          <td>{{ req.note or '—' }}</td>
+          <td class="approval-actions">
+            <button type="button" class="btn-toggle" data-action="approve-contribution" data-id="{{ req.id }}">
+              <span class="btn-spinner" hidden></span><span class="btn-label">Approve</span>
+            </button>
+            <button type="button" class="btn-toggle btn-danger" data-action="reject-contribution" data-id="{{ req.id }}">
+              <span class="btn-spinner" hidden></span><span class="btn-label">Reject</span>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-cell">Nothing pending for you right now.</p>
+  <table hidden id="my-pending-table"><table></table></table>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Redeem review: stored request values are read-only before a decision. #}
+{% macro redeem_review_list(pending, users) %}
+<div class="table-card">
+  <div class="table-card-header">
+    <button type="button" class="btn-toggle btn-download"
+            onclick="downloadTableCSV('#redeem-review-table table', 'redeem-review-pending.csv')">
+      Download CSV
+    </button>
+  </div>
+  {% if pending %}
+  <div id="redeem-review-table">
+    <table class="data-table redeem-review-table">
+      <thead>
+        <tr><th>When</th><th class="num">Tirtha amount</th><th class="num">Contribution amount</th><th class="num">Total amount</th><th>Reason</th><th>Raised by</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for req in pending %}
+        <tr data-request-id="{{ req.id }}" data-user-id="{{ req.requested_by }}">
+          <td>{{ req.created_at.strftime('%d %b, %I:%M %p') }}</td>
+          <td class="num">
+            <input type="number" min="0" step="1" inputmode="numeric" class="redeem-review-amount redeem-review-tirtha" value="{{ '%.0f'|format(req.tirtha_amount) }}">
+            <small class="redeem-review-limit redeem-review-tirtha-limit">Max: loading...</small>
+          </td>
+          <td class="num">
+            <input type="number" min="0" step="1" inputmode="numeric" class="redeem-review-amount redeem-review-contribution" value="{{ '%.0f'|format(req.contribution_amount) }}">
+            <small class="redeem-review-limit redeem-review-contribution-limit">Max: loading...</small>
+          </td>
+          <td class="num redeem-review-total"><strong>&#8377;{{ "%.0f"|format(req.tirtha_amount + req.contribution_amount) }}</strong></td>
+          <td>{{ req.note or '—' }}</td>
+          <td>{{ req.requested_by }}</td>
+          <td class="approval-actions">
+            <button type="button" class="btn-toggle" data-action="approve-redemption" data-id="{{ req.id }}">
+              <span class="btn-spinner" hidden></span><span class="btn-label">Approve</span>
+            </button>
+            <button type="button" class="btn-toggle btn-danger" data-action="reject-redemption" data-id="{{ req.id }}">
+              <span class="btn-spinner" hidden></span><span class="btn-label">Reject</span>
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-cell">No redeem requests pending review.</p>
+  <table hidden id="redeem-review-table"><table></table></table>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+<style>
+  /* Searchable user combobox — looks like a native dropdown (bordered box +
+     chevron), but stays an editable text field: typing filters the list
+     below it instead of replacing it with a plain <select>. */
+  .user-combobox {
+    position: relative;
+  }
+  .user-combobox .combobox-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 34px 9px 12px;
+    font-size: 14px;
+    line-height: 1.3;
+    color: #1f2937;
+    background-color: #fff;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .user-combobox .combobox-input:hover {
+    border-color: #b8bfc9;
+  }
+  .user-combobox .combobox-input:focus {
+    outline: none;
+    cursor: text;
+    border-color: #d97706;
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+  }
+  .user-combobox .combobox-list {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    max-height: 230px;
+    overflow-y: auto;
+    padding: 6px;
+    margin: 0;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
+  }
+  .user-combobox .combobox-option {
+    padding: 8px 10px;
+    font-size: 14px;
+    color: #1f2937;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .user-combobox .combobox-option:hover,
+  .user-combobox .combobox-option.combobox-option-active {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  .user-combobox .combobox-empty {
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #9ca3af;
+    font-style: italic;
+  }
+
+  /* Approve / Reject loading state — small inline spinner inside the
+     button itself, so the button visibly shows "working" until the API
+     call resolves and the list is repainted with fresh data. */
+  .approval-actions .btn-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+    min-width: 84px;
+  }
+  .approval-actions .btn-toggle[disabled] {
+    opacity: .7;
+    cursor: not-allowed;
+  }
+  .btn-spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(0, 0, 0, 0.18);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    display: inline-block;
+    animation: btn-spin .6s linear infinite;
+  }
+  .btn-spinner[hidden] {
+    display: none;
+  }
+  .pending-list {
+    position: relative;
+  }
+  .pending-list.is-loading::before {
+    content: 'Updating...';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 34px;
+    color: #374151;
+    background: rgba(255, 255, 255, .72);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pending-list.is-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    margin: -20px 0 0 -9px;
+    border: 3px solid rgba(0, 0, 0, .16);
+    border-top-color: #374151;
+    border-radius: 50%;
+    animation: btn-spin .6s linear infinite;
+  }
+  .transaction-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .transaction-status.status-approved {
+    color: #166534;
+    background: #dcfce7;
+  }
+  .transaction-status.status-pending {
+    color: #854d0e;
+    background: #fef3c7;
+  }
+  .transaction-status.status-rejected {
+    color: #991b1b;
+    background: #fee2e2;
+  }
+  .transaction-status.status-completed {
+    color: #1e3a8a;
+    background: #dbeafe;
+  }
+  .activity-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .activity-controls select {
+    min-height: 34px;
+    padding: 5px 9px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    color: #374151;
+  }
+  .sortable-header {
+    cursor: pointer;
+    user-select: none;
+  }
+  .sortable-header::after {
+    content: ' ↕';
+    color: #9ca3af;
+    font-size: 11px;
+  }
+  .sortable-header[aria-sort="ascending"]::after { content: ' ↑'; color: #374151; }
+  .sortable-header[aria-sort="descending"]::after { content: ' ↓'; color: #374151; }
+  @keyframes btn-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+<p class="content-subtitle">Srila Prabhupada's Tirtha Nidhi grows and shrinks with every book sale's profit. The Contribution Nidhi holds what devotees have personally given, once approved.</p>
+
+<div id="nidhi-balances">
+  {{ balances_section(tirtha_amount, contribution_amount, tirtha_updated_at, contribution_updated_at) }}
+</div>
+
+<div class="nidhi-actions">
+  <button type="button" class="btn-filter" onclick="openModal('modal-contribute')">Contribute an amount</button>
+  <button type="button" class="btn-toggle" onclick="openModal('modal-redeem')">Raise a redeem request</button>
+  <button type="button" class="btn-toggle" onclick="openModal('modal-my-pending')">
+    My pending requests
+    <span id="my-pending-badge" class="nidhi-badge-count" {% if not my_pending_contributions %}style="display:none;"{% endif %}>{{ my_pending_contributions|length }}</span>
+  </button>
+  {% if can_review_redemptions %}
+  <button type="button" class="btn-toggle" onclick="openModal('modal-redeem-review')">
+    Redeem review
+    <span id="redeem-review-badge" class="nidhi-badge-count" {% if not pending_redemptions %}style="display:none;"{% endif %}>{{ pending_redemptions|length }}</span>
+  </button>
+  {% endif %}
+</div>
+
+<div class="card-header-row">
+  <h3>Recent activity</h3>
+  <div class="header-actions">
+    <button type="button" class="btn-toggle" id="toggle-history-btn" onclick="toggleFullHistory()">See full history</button>
+  </div>
+</div>
+
+<div id="nidhi-recent-transactions">
+  {{ transactions_table(recent_transactions, 'recent-transactions-table', download_name='nidhi-recent-transactions.csv') }}
+</div>
+
+<div id="nidhi-full-history" style="display:none;"></div>
+
+<!-- ===================== MODALS (matching base.html's modal system) ===================== -->
+
+<div class="modal-overlay" id="modal-contribute">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Contribute an amount</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-contribute')">&times;</button>
+    </div>
+    <form id="form-contribute" class="modal-form">
+      <div class="field">
+        <label for="c-user-q">User (this will go to their pending requests to approve)</label>
+        {{ user_combobox('user_id', 'c-user', users) }}
+      </div>
+      <div class="field">
+        <label for="c-fund">Fund</label>
+        <div class="static-field">Contribution Nidhi</div>
+        <input type="hidden" name="fund_type" id="c-fund" value="contribution_nidhi">
+      </div>
+      <div class="field">
+        <label for="c-amount">Amount (₹)</label>
+        <input type="number" min="1" step="1" inputmode="numeric" name="amount" id="c-amount" required>
+      </div>
+      <div class="field">
+        <label for="c-note">Note (optional)</label>
+        <input type="text" name="note" id="c-note">
+      </div>
+      <div class="nidhi-form-error" id="c-error"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn-filter">Submit contribution</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-redeem">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3>Raise a redeem request</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-redeem')">&times;</button>
+    </div>
+    <form id="form-redeem" class="modal-form">
+      <div class="field">
+        <label for="r-user-q">User</label>
+        {{ user_combobox('user_id', 'r-user', users) }}
+      </div>
+      <div class="field">
+        <label for="r-tirtha-amount">From Tirtha Nidhi (₹)</label>
+        <input type="number" min="0" step="1" inputmode="numeric" name="tirtha_amount" id="r-tirtha-amount" placeholder="0">
+      </div>
+      <div class="field">
+        <label for="r-contribution-amount">From Contribution Nidhi (₹)</label>
+        <input type="number" min="0" step="1" inputmode="numeric" name="contribution_amount" id="r-contribution-amount" placeholder="0">
+      </div>
+      <div class="static-field static-field-total" id="r-total-display">
+        Total: &#8377;0
+      </div>
+      <div class="field" style="margin-top:16px;">
+        <label for="r-reason">Reason</label>
+        <input type="text" name="reason" id="r-reason" required>
+      </div>
+      <div class="nidhi-form-error" id="r-error"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn-filter" id="redeem-submit-btn">
+          <span class="btn-spinner" hidden></span><span class="btn-label">Submit request</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-my-pending">
+  <div class="modal-panel modal-panel-wide">
+    <div class="modal-header">
+      <h3>My pending requests</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-my-pending')">&times;</button>
+    </div>
+    <p class="content-subtitle">Contributions offered to you. Approve to accept the funds as shown — details can't be edited here.</p>
+    <div id="my-pending-list" class="pending-list">
+      {{ my_pending_list(my_pending_contributions) }}
+    </div>
+  </div>
+</div>
+
+{% if can_review_redemptions %}
+<div class="modal-overlay" id="modal-redeem-review">
+  <div class="modal-panel modal-panel-wide">
+    <div class="modal-header">
+      <h3>Redeem review</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-redeem-review')">&times;</button>
+    </div>
+    <p class="content-subtitle">All pending redeem requests. You can correct the user, fund, or amount before deciding.</p>
+    <div id="redeem-review-list" class="pending-list">
+      {{ redeem_review_list(pending_redemptions, users) }}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function openModal(id) { document.getElementById(id).classList.add('visible'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('visible'); }
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+
+  document.querySelectorAll('.modal-overlay').forEach(function (overlay) {
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeModal(overlay.id);
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.visible').forEach(function (o) { closeModal(o.id); });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Searchable user combobox (text filter -> hidden id field)
+  // ------------------------------------------------------------------
+  function initCombobox(root) {
+    var input = root.querySelector('.combobox-input');
+    var hidden = root.querySelector('input[type=hidden]');
+    var list = root.querySelector('.combobox-list');
+    var empty = list.querySelector('.combobox-empty');
+    var options = Array.from(list.querySelectorAll('.combobox-option'));
+    var activeIndex = -1;
+
+    function notifySelection() {
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function visibleOptions() {
+      return options.filter(function (opt) { return !opt.hidden; });
+    }
+
+    function setActive(index) {
+      var visible = visibleOptions();
+      visible.forEach(function (opt) { opt.classList.remove('combobox-option-active'); });
+      if (index >= 0 && index < visible.length) {
+        activeIndex = index;
+        visible[index].classList.add('combobox-option-active');
+        visible[index].scrollIntoView({ block: 'nearest' });
+      } else {
+        activeIndex = -1;
+      }
+    }
+
+    // showAll=true lists every option regardless of the current text — used
+    // when opening the box, so it behaves like a dropdown you can browse,
+    // not just a search field.
+    function filter(showAll) {
+      var q = showAll ? '' : input.value.trim().toLowerCase();
+      var anyVisible = false;
+      options.forEach(function (opt) {
+        var match = opt.textContent.toLowerCase().indexOf(q) !== -1;
+        opt.hidden = !match;
+        if (match) anyVisible = true;
+      });
+      empty.hidden = anyVisible;
+      setActive(-1);
+    }
+
+    input.addEventListener('input', function () {
+      hidden.value = ''; // typing invalidates whatever was previously picked
+      notifySelection();
+      filter(false);
+      list.hidden = false;
+    });
+    input.addEventListener('focus', function () {
+      if (hidden.value) {
+        // A value is already picked: show the whole list like a dropdown
+        // and select the text so the next keystroke starts a fresh filter.
+        input.select();
+        filter(true);
+      } else {
+        filter(false);
+      }
+      list.hidden = false;
+    });
+    input.addEventListener('blur', function () {
+      // small delay so a click on an option registers before we hide the list
+      setTimeout(function () { list.hidden = true; }, 150);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (list.hidden) return;
+      var visible = visibleOptions();
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActive(Math.min(activeIndex + 1, visible.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActive(Math.max(activeIndex - 1, 0));
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0 && visible[activeIndex]) {
+          e.preventDefault();
+          var opt = visible[activeIndex];
+          hidden.value = opt.dataset.id;
+          input.value = opt.textContent;
+          list.hidden = true;
+          notifySelection();
+        }
+      } else if (e.key === 'Escape') {
+        list.hidden = true;
+        input.blur();
+      }
+    });
+    list.addEventListener('mousedown', function (e) {
+      var opt = e.target.closest('.combobox-option');
+      if (!opt) return;
+      hidden.value = opt.dataset.id;
+      input.value = opt.textContent;
+      list.hidden = true;
+      notifySelection();
+    });
+  }
+
+  function initAllComboboxes(scope) {
+    (scope || document).querySelectorAll('[data-combobox]').forEach(initCombobox);
+  }
+  initAllComboboxes(document);
+
+  function initTransactionTables(scope) {
+    (scope || document).querySelectorAll('.table-card').forEach(function (card) {
+      var table = card.querySelector('.data-table');
+      var rowCount = card.querySelector('.activity-row-count');
+      if (!table || !rowCount || table.dataset.activityInitialized) return;
+      table.dataset.activityInitialized = 'true';
+
+      var body = table.querySelector('tbody');
+      var headers = table.querySelectorAll('th[data-sort-key]');
+      var sortKey = '';
+      var sortDirection = 1;
+
+      function renderRows() {
+        var rows = Array.from(body.querySelectorAll('tr'));
+        if (sortKey) {
+          var header = table.querySelector('th[data-sort-key="' + sortKey + '"]');
+          var columnIndex = header.cellIndex;
+          rows.sort(function (leftRow, rightRow) {
+            var leftCell = leftRow.cells[columnIndex];
+            var rightCell = rightRow.cells[columnIndex];
+            var leftValue = (leftCell.dataset.sortValue || leftCell.textContent).trim();
+            var rightValue = (rightCell.dataset.sortValue || rightCell.textContent).trim();
+            var numeric = ['amount', 'balance', 'tirtha-amount', 'contribution-amount'].indexOf(sortKey) !== -1;
+            if (numeric) {
+              return (Number(leftValue || 0) - Number(rightValue || 0)) * sortDirection;
+            }
+            return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' }) * sortDirection;
+          });
+          rows.forEach(function (row) { body.appendChild(row); });
+        }
+        var limit = rowCount.value === 'all' ? rows.length : Number(rowCount.value);
+        rows.forEach(function (row, index) { row.hidden = index >= limit; });
+      }
+
+      headers.forEach(function (header) {
+        header.setAttribute('role', 'button');
+        header.setAttribute('tabindex', '0');
+        function sort() {
+          if (sortKey === header.dataset.sortKey) {
+            sortDirection *= -1;
+          } else {
+            sortKey = header.dataset.sortKey;
+            sortDirection = 1;
+          }
+          headers.forEach(function (item) { item.removeAttribute('aria-sort'); });
+          header.setAttribute('aria-sort', sortDirection === 1 ? 'ascending' : 'descending');
+          renderRows();
+        }
+        header.addEventListener('click', sort);
+        header.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            sort();
+          }
+        });
+      });
+      rowCount.addEventListener('change', renderRows);
+      renderRows();
+    });
+  }
+  initTransactionTables(document);
+
+  // ------------------------------------------------------------------
+  // Approve/Reject button loading state helpers
+  // ------------------------------------------------------------------
+  // Every approve/reject button in the pending lists is disabled and shown
+  // with a spinner the moment it's clicked, and stays that way until the
+  // API call resolves AND the list has been repainted with fresh data from
+  // the server (loadMyPending / loadRedeemReview below) — so the UI never
+  // shows a stale row mid-flight.
+  function setRowButtonsLoading(row, activeBtn, isLoading) {
+    row.querySelectorAll('[data-action]').forEach(function (b) {
+      b.disabled = isLoading;
+    });
+    var spinner = activeBtn.querySelector('.btn-spinner');
+    var label = activeBtn.querySelector('.btn-label');
+    if (spinner) spinner.hidden = !isLoading;
+    if (label) label.textContent = isLoading
+      ? (activeBtn.dataset.action.indexOf('approve') === 0 ? 'Approving…' : 'Rejecting…')
+      : (activeBtn.dataset.action.indexOf('approve') === 0 ? 'Approve' : 'Reject');
+  }
+
+  function setPendingListLoading(container, isLoading) {
+    container.classList.toggle('is-loading', isLoading);
+    container.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+
+  // Turns the loading state on, waits for the browser to actually paint it
+  // (two rAF ticks — the first schedules the paint, the second confirms it
+  // happened), then runs the API call. Without this, a very fast response
+  // can resolve in the same frame as the click, so the spinner never
+  // visibly renders even though the state was set correctly.
+  function runWithLoading(row, btn, apiCall) {
+    setRowButtonsLoading(row, btn, true);
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(resolve);
+      });
+    }).then(apiCall);
+  }
+
+  // ------------------------------------------------------------------
+  // CSV / Excel export — any visible <table> under the given selector
+  // ------------------------------------------------------------------
+  function csvEscape(text) {
+    return '"' + String(text).trim().replace(/"/g, '""') + '"';
+  }
+
+  function tableToCSV(table) {
+    return Array.from(table.rows).map(function (row) {
+      return Array.from(row.cells).filter(function (cell) {
+        return !cell.classList.contains('approval-actions');
+      }).map(function (cell) {
+        // Prefer an input's current value over its cell text (e.g. the
+        // editable amount field in the redeem-review table).
+        var input = cell.querySelector('input');
+        var select = cell.querySelector('select');
+        var text = input
+          ? input.value
+          : (select
+            ? (select.selectedOptions[0] ? select.selectedOptions[0].textContent : '')
+            : cell.textContent);
+        return csvEscape(text);
+      }).join(',');
+    }).join('\r\n');
+  }
+
+  window.downloadTableCSV = function (tableSelector, filename) {
+    var table = document.querySelector(tableSelector);
+    if (!table || !table.querySelector('tr')) {
+      showFlash('Nothing to export yet.', 'error');
+      return;
+    }
+    var csv = '\uFEFF' + tableToCSV(table);
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
+  // ------------------------------------------------------------------
+  // Flash messages
+  // ------------------------------------------------------------------
+  function showFlash(message, category) {
+    var stack = document.querySelector('.flash-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.className = 'flash-stack';
+      document.querySelector('.content').prepend(stack);
+    }
+    var el = document.createElement('div');
+    el.className = 'flash flash-' + (category || 'success');
+    el.setAttribute('data-flash', '');
+    el.innerHTML = '<span class="flash-text"></span><button type="button" class="flash-close" aria-label="Dismiss">&times;</button>';
+    el.querySelector('.flash-text').textContent = message;
+    stack.appendChild(el);
+
+    var timer = setTimeout(function () { dismiss(); }, 4500);
+    el.querySelector('.flash-close').addEventListener('click', function () {
+      clearTimeout(timer);
+      dismiss();
+    });
+    function dismiss() {
+      el.classList.add('flash-hide');
+      el.addEventListener('transitionend', function () { el.remove(); }, { once: true });
+      setTimeout(function () { if (el.parentNode) el.remove(); }, 500);
+    }
+  }
+
+  function postJSON(url, payload) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok) throw new Error(data.error || 'Request failed.');
+        return data;
+      });
+    });
+  }
+
+  function getJSON(url) {
+    return fetch(url).then(function (r) {
+      return r.json().then(function (data) {
+        if (!r.ok) throw new Error(data.error || 'Request failed.');
+        return data;
+      });
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Dashboard-wide refresh: balances, recent activity, my pending badge
+  // (and redeem-review badge, if that section exists for this user)
+  // ------------------------------------------------------------------
+  function refreshDashboard() {
+    return fetch('/tirtha-nidhi/refresh')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        document.getElementById('nidhi-balances').innerHTML = data.balances_html;
+        document.getElementById('nidhi-recent-transactions').innerHTML = data.recent_transactions_html;
+        initTransactionTables(document.getElementById('nidhi-recent-transactions'));
+
+        var myBadge = document.getElementById('my-pending-badge');
+        if (myBadge) {
+          myBadge.textContent = data.my_pending_count;
+          myBadge.style.display = data.my_pending_count > 0 ? '' : 'none';
+        }
+        var rrBadge = document.getElementById('redeem-review-badge');
+        if (rrBadge && typeof data.redeem_review_count === 'number') {
+          rrBadge.textContent = data.redeem_review_count;
+          rrBadge.style.display = data.redeem_review_count > 0 ? '' : 'none';
+        }
+      })
+      .catch(function () { showFlash('Could not refresh the dashboard.', 'error'); });
+  }
+
+  // ------------------------------------------------------------------
+  // Contribute
+  // ------------------------------------------------------------------
+  document.getElementById('form-contribute').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var errorEl = document.getElementById('c-error');
+    errorEl.textContent = '';
+    var payload = {
+      user_id: document.getElementById('c-user').value,
+      fund_type: document.getElementById('c-fund').value,
+      amount: Number(document.getElementById('c-amount').value),
+      note: document.getElementById('c-note').value
+    };
+    if (!payload.user_id) {
+      errorEl.textContent = 'Please pick a user from the list.';
+      return;
+    }
+    if (!Number.isInteger(payload.amount) || payload.amount <= 0) {
+      errorEl.textContent = 'Amount must be a whole unit greater than zero.';
+      return;
+    }
+    postJSON('/tirtha-nidhi/contribute', payload)
+      .then(function () {
+        closeModal('modal-contribute');
+        e.target.reset();
+        document.getElementById('c-user').value = '';
+        showFlash('Contribution submitted — awaiting the recipient\u2019s approval.', 'success');
+        refreshDashboard();
+      })
+      .catch(function (err) { errorEl.textContent = err.message; });
+  });
+
+  // ------------------------------------------------------------------
+  // Redeem
+  // ------------------------------------------------------------------
+  var tirthaInput = document.getElementById('r-tirtha-amount');
+  var contribInput = document.getElementById('r-contribution-amount');
+  var totalDisplay = document.getElementById('r-total-display');
+
+  function readBalanceValue(data, currentKey, legacyKey) {
+    var value = data[currentKey];
+    if (value === undefined || value === null) value = data[legacyKey];
+    return Number(value) || 0;
+  }
+
+  function updateRedeemTotal() {
+    var t = Number(tirthaInput.value) || 0;
+    var c = Number(contribInput.value) || 0;
+    totalDisplay.textContent = 'Total: \u20B9' + (t + c).toFixed(0);
+  }
+  tirthaInput.addEventListener('input', updateRedeemTotal);
+  contribInput.addEventListener('input', updateRedeemTotal);
+
+  document.getElementById('form-redeem').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var errorEl = document.getElementById('r-error');
+    var submitBtn = document.getElementById('redeem-submit-btn');
+    var submitSpinner = submitBtn.querySelector('.btn-spinner');
+    var submitLabel = submitBtn.querySelector('.btn-label');
+    errorEl.textContent = '';
+
+    var userId = document.getElementById('r-user').value;
+    var reason = document.getElementById('r-reason').value;
+    var tirtha = Number(tirthaInput.value) || 0;
+    var contribution = Number(contribInput.value) || 0;
+
+    if (!userId) {
+      errorEl.textContent = 'Please pick a user from the list.';
+      return;
+    }
+    if (tirtha <= 0 && contribution <= 0) {
+      errorEl.textContent = 'Enter an amount from at least one nidhi.';
+      return;
+    }
+    if (!Number.isInteger(tirtha) || !Number.isInteger(contribution)) {
+      errorEl.textContent = 'Amounts must be whole units.';
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitSpinner.hidden = false;
+    submitLabel.textContent = 'Submitting...';
+
+    var requests = [];
+    if (tirtha > 0) {
+      requests.push(postJSON('/tirtha-nidhi/redeem', {
+        user_id: userId, nidhi_type: 'tirtha_nidhi', amount: tirtha, reason: reason
+      }));
+    }
+    if (contribution > 0) {
+      requests.push(postJSON('/tirtha-nidhi/redeem', {
+        user_id: userId, nidhi_type: 'contribution_nidhi', amount: contribution, reason: reason
+      }));
+    }
+
+    Promise.allSettled(requests)
+      .then(function (results) {
+        var failed = results.filter(function (result) { return result.status === 'rejected'; });
+        if (failed.length) {
+          var succeeded = results.length - failed.length;
+          if (succeeded) {
+            showFlash(succeeded + ' redeem request submitted, but another could not be submitted.', 'warning');
+          }
+          throw failed[0].reason;
+        }
+        closeModal('modal-redeem');
+        e.target.reset();
+        document.getElementById('r-user').value = '';
+        totalDisplay.textContent = 'Total: \u20B90';
+        showFlash('Redeem request submitted for review.', 'success');
+        return refreshDashboard();
+      })
+      .catch(function (err) { errorEl.textContent = err.message; })
+      .finally(function () {
+        submitBtn.disabled = false;
+        submitSpinner.hidden = true;
+        submitLabel.textContent = 'Submit request';
+      });
+  });
+
+  // ------------------------------------------------------------------
+  // My pending requests (contributions) — approve/reject, no editing
+  // ------------------------------------------------------------------
+  function loadMyPending() {
+    var container = document.getElementById('my-pending-list');
+    setPendingListLoading(container, true);
+    return getJSON('/tirtha-nidhi/contributions/pending')
+      .then(function (data) {
+        container.innerHTML = data.html;
+        initAllComboboxes(container);
+      })
+      .catch(function () { showFlash('Could not load your pending requests.', 'error'); })
+      .finally(function () { setPendingListLoading(container, false); });
+  }
+
+  document.getElementById('my-pending-list').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn || btn.disabled) return;
+    var row = btn.closest('tr');
+    var id = btn.dataset.id;
+    var action = btn.dataset.action; // 'approve-contribution' | 'reject-contribution'
+    var verb = action.indexOf('approve') === 0 ? 'approve' : 'reject';
+    var container = document.getElementById('my-pending-list');
+    setPendingListLoading(container, true);
+
+    runWithLoading(row, btn, function () {
+      return postJSON('/tirtha-nidhi/contributions/' + id + '/' + verb, {});
+    })
+      .then(function () {
+        showFlash(verb === 'approve' ? 'Contribution approved.' : 'Contribution rejected.', 'success');
+        // Pull fresh data before dropping the loading state, so the modal
+        // never flashes a stale row and always shows up-to-date values.
+        return Promise.all([loadMyPending(), refreshDashboard()]);
+      })
+      .catch(function (err) {
+        showFlash(err.message, 'error');
+      })
+      .finally(function () {
+        setRowButtonsLoading(row, btn, false);
+        setPendingListLoading(container, false);
+      });
+  });
+
+  // Load the current list every time the modal is opened, so it's
+  // never stale from a previous visit.
+  document.querySelector('[onclick*="modal-my-pending"]').addEventListener('click', loadMyPending);
+
+  {% if can_review_redemptions %}
+  // ------------------------------------------------------------------
+  // Redeem review — fund amounts can be corrected before deciding
+  // ------------------------------------------------------------------
+  function loadRedeemReview() {
+    var container = document.getElementById('redeem-review-list');
+    setPendingListLoading(container, true);
+    return getJSON('/tirtha-nidhi/redemptions/pending')
+      .then(function (data) {
+        container.innerHTML = data.html;
+        initAllComboboxes(container);
+        initRedeemReviewLimits(container);
+      })
+      .catch(function () { showFlash('Could not load pending redeem requests.', 'error'); })
+      .finally(function () { setPendingListLoading(container, false); });
+  }
+
+  function initRedeemReviewLimits(container) {
+    container.querySelectorAll('tr[data-user-id]').forEach(function (row) {
+      var userId = row.dataset.userId;
+      row.dataset.balanceLoaded = 'false';
+      getJSON('/tirtha-nidhi/balances/' + encodeURIComponent(userId))
+        .then(function (data) {
+          var tirtha = readBalanceValue(data, 'tirtha_balance', 'tirtha_nidhi_balance');
+          var contribution = readBalanceValue(data, 'contribution_balance', 'contribution_nidhi_balance');
+          row.dataset.tirthaMax = tirtha;
+          row.dataset.contributionMax = contribution;
+          row.querySelector('.redeem-review-tirtha').max = tirtha;
+          row.querySelector('.redeem-review-contribution').max = contribution;
+          row.querySelector('.redeem-review-tirtha-limit').textContent = 'Max: ₹' + tirtha.toFixed(0);
+          row.querySelector('.redeem-review-contribution-limit').textContent = 'Max: ₹' + contribution.toFixed(0);
+          row.dataset.balanceLoaded = 'true';
+        })
+        .catch(function () {
+          row.querySelector('.redeem-review-tirtha-limit').textContent = 'Max unavailable';
+          row.querySelector('.redeem-review-contribution-limit').textContent = 'Max unavailable';
+        });
+    });
+  }
+
+  document.getElementById('redeem-review-list').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn || btn.disabled) return;
+    var row = btn.closest('tr');
+    var id = btn.dataset.id;
+    var action = btn.dataset.action; // 'approve-redemption' | 'reject-redemption'
+    var verb = action.indexOf('approve') === 0 ? 'approve' : 'reject';
+    var container = document.getElementById('redeem-review-list');
+    var payload = {};
+    if (verb === 'approve') {
+      if (row.dataset.balanceLoaded !== 'true') {
+        showFlash('Wait for this user\'s available balances to load.', 'error');
+        return;
+      }
+      payload.tirtha_amount = Number(row.querySelector('.redeem-review-tirtha').value) || 0;
+      payload.contribution_amount = Number(row.querySelector('.redeem-review-contribution').value) || 0;
+      if (!Number.isInteger(payload.tirtha_amount) || !Number.isInteger(payload.contribution_amount)) {
+        showFlash('Amounts must be whole units.', 'error');
+        return;
+      }
+      if (payload.tirtha_amount > Number(row.dataset.tirthaMax) ||
+          payload.contribution_amount > Number(row.dataset.contributionMax)) {
+        showFlash('An amount cannot exceed the available balance for that nidhi.', 'error');
+        return;
+      }
+    }
+    setPendingListLoading(container, true);
+
+    runWithLoading(row, btn, function () {
+      return postJSON('/tirtha-nidhi/redemptions/' + id + '/' + verb, payload);
+    })
+      .then(function () {
+        showFlash(verb === 'approve' ? 'Redemption approved.' : 'Redemption rejected.', 'success');
+        // Pull fresh data before dropping the loading state, so the modal
+        // never flashes a stale row and always shows up-to-date values.
+        return Promise.all([loadRedeemReview(), refreshDashboard()]);
+      })
+      .catch(function (err) {
+        showFlash(err.message, 'error');
+      })
+      .finally(function () {
+        setRowButtonsLoading(row, btn, false);
+        setPendingListLoading(container, false);
+      });
+  });
+
+  document.getElementById('redeem-review-list').addEventListener('input', function (e) {
+    if (!e.target.classList.contains('redeem-review-amount')) return;
+    var row = e.target.closest('tr');
+    var tirtha = Number(row.querySelector('.redeem-review-tirtha').value) || 0;
+    var contribution = Number(row.querySelector('.redeem-review-contribution').value) || 0;
+    row.querySelector('.redeem-review-total strong').textContent = '₹' + (tirtha + contribution).toFixed(0);
+  });
+
+  document.querySelector('[onclick*="modal-redeem-review"]').addEventListener('click', loadRedeemReview);
+  {% endif %}
+
+  // ------------------------------------------------------------------
+  // Full transaction history
+  // ------------------------------------------------------------------
+  var historyLoaded = false;
+  window.toggleFullHistory = function () {
+    var full = document.getElementById('nidhi-full-history');
+    var recent = document.getElementById('nidhi-recent-transactions');
+    var btn = document.getElementById('toggle-history-btn');
+    var showingFull = full.style.display !== 'none';
+
+    if (showingFull) {
+      full.style.display = 'none';
+      recent.style.display = '';
+      btn.textContent = 'See full history';
+      return;
+    }
+
+    btn.textContent = 'Loading…';
+    var load = historyLoaded
+      ? Promise.resolve()
+      : fetch('/tirtha-nidhi/transactions')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            full.innerHTML = data.html;
+            initTransactionTables(full);
+            historyLoaded = true;
+          });
+
+    load.then(function () {
+      recent.style.display = 'none';
+      full.style.display = '';
+      btn.textContent = 'Show recent only';
+    }).catch(function () {
+      showFlash('Could not load full history.', 'error');
+      btn.textContent = 'See full history';
+    });
+  };
+})();
+</script>
+{% endblock %}

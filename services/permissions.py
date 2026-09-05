@@ -20,6 +20,11 @@ ROUTE_PERMISSIONS = {
     "master_data_write":        ["admin", "commander", "volunteer"],
     "admin_tools":            ["admin"],
     "volunteer_assignment_view": ["admin", "commander"],
+    "nidhi_view": ["admin", "commander", "volunteer"],
+    "nidhi_manage": ["admin"],
+    "nidhi_approve": ["admin"],
+    "book_request_create": ["admin", "commander", "volunteer"],
+    "book_request_history": ["admin"],
     # add new actions here as you find more routes that need gating --
     # fill in your real role names once you send them over
 }
