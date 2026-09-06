@@ -1200,6 +1200,97 @@ body.app-body {
   font-size: 0.9rem;
 }
 
+/* Searchable selects and date pickers keep the native form controls in the
+   DOM, while presenting a consistent type-to-filter field to users. */
+.select-search,
+.date-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.select-search-input,
+.date-picker-display {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 36px 10px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  cursor: pointer;
+}
+
+.select-search-input:focus,
+.date-picker-display:focus {
+  outline: none;
+  border-color: var(--teal-mid);
+  box-shadow: 0 0 0 3px rgba(14, 143, 111, 0.15);
+}
+
+.select-search-input::placeholder,
+.date-picker-display::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+.select-search::after,
+.date-picker::after {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  color: var(--text-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.select-search::after { content: "\25BE"; }
+.date-picker::after { content: "\1F4C5"; font-size: 0.9rem; }
+
+.select-search-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 5px;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+
+.select-search-option {
+  padding: 9px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.select-search-option:hover,
+.select-search-option.active {
+  background: rgba(14, 143, 111, 0.1);
+  color: var(--teal-dark);
+}
+
+.select-search-empty {
+  padding: 9px 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.select-search > select,
+.date-picker > input[type="date"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .btn-filter {
   padding: 11px 22px;
   border: none;

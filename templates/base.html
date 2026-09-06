@@ -206,6 +206,150 @@
           if (e.key === 'Escape') closeMenu();
         });
       }
+
+      function formatDate(value) {
+        if (!value) return '';
+        var parts = value.split('-');
+        return parts.length === 3 ? parts[2] + '-' + parts[1] + '-' + parts[0] : value;
+      }
+
+      function initDatePicker(input) {
+        if (input.dataset.datePickerReady) return;
+        input.dataset.datePickerReady = 'true';
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'date-picker';
+        input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        var display = document.createElement('input');
+        display.type = 'text';
+        display.className = 'date-picker-display';
+        display.readOnly = true;
+        display.placeholder = 'Select date';
+        display.value = formatDate(input.value);
+        display.setAttribute('aria-label', input.getAttribute('aria-label') || input.name || 'Select date');
+        wrapper.insertBefore(display, input);
+
+        function openPicker() {
+          if (typeof input.showPicker === 'function') input.showPicker();
+          else input.click();
+        }
+        display.addEventListener('click', openPicker);
+        input.addEventListener('change', function () {
+          display.value = formatDate(input.value);
+        });
+        setTimeout(function () {
+          display.value = formatDate(input.value);
+        }, 0);
+      }
+
+      function initSearchableSelect(select) {
+        if (select.dataset.searchableReady || select.multiple) return;
+        select.dataset.searchableReady = 'true';
+
+        var wrapper = document.createElement('div');
+        wrapper.className = 'select-search';
+        select.parentNode.insertBefore(wrapper, select);
+        wrapper.appendChild(select);
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'select-search-input';
+        input.autocomplete = 'off';
+        input.placeholder = 'Type to filter...';
+        input.setAttribute('aria-label', select.getAttribute('aria-label') || select.name || 'Select an option');
+        wrapper.insertBefore(input, select);
+        var hasTypedFilter = false;
+
+        var list = document.createElement('div');
+        list.className = 'select-search-list';
+        list.hidden = true;
+        wrapper.appendChild(list);
+
+        function options() {
+          return Array.from(select.options).filter(function (option) {
+            return !option.disabled;
+          });
+        }
+
+        function syncInput() {
+          var option = select.options[select.selectedIndex];
+          input.value = option && !option.disabled ? option.textContent.trim() : '';
+        }
+
+        function render(query) {
+          var normalized = (query || '').trim().toLowerCase();
+          list.innerHTML = '';
+          var matches = options().filter(function (option) {
+            return option.textContent.toLowerCase().indexOf(normalized) !== -1;
+          });
+          matches.forEach(function (option) {
+            var item = document.createElement('div');
+            item.className = 'select-search-option';
+            item.textContent = option.textContent.trim();
+            item.dataset.value = option.value;
+            list.appendChild(item);
+          });
+          if (!matches.length) {
+            var empty = document.createElement('div');
+            empty.className = 'select-search-empty';
+            empty.textContent = 'No matching options';
+            list.appendChild(empty);
+          }
+        }
+
+        function openList(showAll) {
+          render(showAll ? '' : input.value);
+          list.hidden = false;
+        }
+
+        input.addEventListener('focus', function () {
+          input.select();
+          openList(true);
+        });
+        input.addEventListener('input', function () {
+          hasTypedFilter = true;
+          openList(false);
+          var exact = options().find(function (option) {
+            return option.textContent.trim().toLowerCase() === input.value.trim().toLowerCase();
+          });
+          select.value = exact ? exact.value : '';
+          if (exact) select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        input.addEventListener('blur', function () {
+          setTimeout(function () {
+            list.hidden = true;
+            if (!hasTypedFilter || select.value) syncInput();
+          }, 150);
+        });
+        list.addEventListener('mousedown', function (event) {
+          var item = event.target.closest('.select-search-option');
+          if (!item) return;
+          select.value = item.dataset.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          hasTypedFilter = false;
+          syncInput();
+          list.hidden = true;
+        });
+        select.addEventListener('change', syncInput);
+        syncInput();
+      }
+
+      function initEnhancedFields(scope) {
+        (scope || document).querySelectorAll('input[type="date"]').forEach(initDatePicker);
+        (scope || document).querySelectorAll('select').forEach(initSearchableSelect);
+      }
+
+      initEnhancedFields(document);
+      var enhancedFieldsObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          mutation.addedNodes.forEach(function (node) {
+            if (node.nodeType === 1) initEnhancedFields(node);
+          });
+        });
+      });
+      enhancedFieldsObserver.observe(document.body, { childList: true, subtree: true });
     })();
   </script>
 
