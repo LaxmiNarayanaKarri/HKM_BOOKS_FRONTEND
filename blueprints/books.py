@@ -65,7 +65,12 @@ def dashboard():
             "leaderboard": [],
             "my_top_books": [],
             "inventory": [],
-            "filters": {"date_from": "", "date_to": "", "seller": "all", "event": "all"},
+            "filters": {
+                "": {"date_from": "", "date_to": "", "seller": "all", "event": "all"},
+                "dist_": {"date_from": "", "date_to": "", "seller": "all", "event": "all"},
+                "books_": {"date_from": "", "date_to": "", "seller": "all", "event": "all"},
+                "inv_": {"date_from": "", "date_to": "", "seller": "all", "event": "all"},
+            },
             "sellers": [],
             "events": [],
             "window_label": "All time",
@@ -77,12 +82,26 @@ def dashboard():
         # only the section whose filter form triggered this call.
         return jsonify(ok=True, **data)
 
+    sellers = data.get("sellers", [])
+    if data.get("is_admin", False):
+        try:
+            users = get_json(_base_url_admin(), "/api/users/get_all")
+            user_names = [
+                user.get("username")
+                for user in (users or [])
+                if user.get("active", True) and user.get("username")
+            ]
+            sellers = sorted(set(user_names))
+        except BackendError:
+            # Keep the dashboard usable if the Users service is temporarily unavailable.
+            pass
+
     return render_template(
         "home.html",
         is_admin=data.get("is_admin", False),
         window_label=data.get("window_label", "All time"),
         filters=data.get("filters", {}),
-        sellers=data.get("sellers", []),
+        sellers=sellers,
         events=data.get("events", []),
         kpis=data.get("kpis", {}),
         net_pl=data.get("net_pl", 0),
