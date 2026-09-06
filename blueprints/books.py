@@ -35,10 +35,6 @@ def _require_login():
     return None
 
 
-def _is_admin():
-    return session.get("role") == "admin"
-
-
 def _empty_filter_set():
     empty = {"date_from": "", "date_to": "", "seller": "all", "event": "all"}
     return {p: dict(empty) for p in ("", "dist_", "books_", "inv_")}
@@ -203,11 +199,9 @@ def sell_entry():
         sale_filters=sale_filters,
     )
 
-    # /api/sell (page data) and /api/users/get_all (for recorded-by
-    # enrichment) don't depend on each other's result, so fire both
-    # concurrently instead of waiting on /api/sell before even starting
-    # the users call.
-    sell_data, users_list = parallel_get_json([
+    # The users list is only needed to render the full page. AJAX refreshes
+    # return sales and stock data only, so avoid an unrelated network call.
+    calls = [
         (_base_url(), "/api/sell", {"params": {
             "se_user": se_user,
             "se_event": se_event,
@@ -215,8 +209,13 @@ def sell_entry():
             "se_date_to": se_date_to,
             "se_location": se_location,
         }}),
-        (_base_url_admin(), "/api/users/get_all", {}),
-    ])
+    ]
+    if not is_ajax:
+        calls.append((_base_url_admin(), "/api/users/get_all", {}))
+
+    results = parallel_get_json(calls)
+    sell_data = results[0]
+    users_list = results[1] if len(results) > 1 else []
 
     if isinstance(sell_data, BackendError):
         # /api/sell is the primary data source for this page -- same

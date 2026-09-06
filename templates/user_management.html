@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}User Management — FNRG Preaching{% endblock %}
 {% block page_title %}User Management{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/user_management.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Add new sellers/admins and activate or deactivate accounts.</p>

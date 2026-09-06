@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Books & Sell Entry — FNRG Preaching{% endblock %}
 {% block page_title %}Books &amp; Sell Entry{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/sell_entry.css') }}">{% endblock %}
 
 <!-- Grand-total helper: sum of qty * sell_price across every row, computed
      once at the top level so both the topbar block and the content block
@@ -223,7 +224,7 @@
         {% endif %}
       </tbody>
     </table>
-    <p class="empty-cell" id="noFilterMatch" style="display:none;">No entries match the current filters.</p>
+    <p class="empty-cell is-hidden" id="noFilterMatch">No entries match the current filters.</p>
   </div>
   </div>
   <div id="book-request-history-view" hidden>
@@ -240,7 +241,9 @@
     <td class="col-book" data-label="Book Name">
       <select name="title[]" class="row-title" required>
         <option value="" disabled selected>Select a book</option>
-        {% for t in book_titles %}<option value="{{ t['id'] }}">{{ t['title'] }} - {{ t['short_title'] }}</option>{% endfor %}
+        {% for t in book_titles %}
+        <option value="{{ t['short_title'] or t['title'] }}" data-book-id="{{ t['id'] }}" title="{{ t['title'] }}">{{ t['title'] }}</option>
+        {% endfor %}
       </select>
     </td>
     <td class="col-avail" data-label="Available Stock">
@@ -434,7 +437,7 @@
     const costInput = row.querySelector(".row-cost");
     const availField = row.querySelector('[data-role="avail"]');
     const numberEl = availField.querySelector(".avail-number");
-    const bookId = titleSelect.value;
+    const bookId = titleSelect.selectedOptions[0]?.dataset.bookId;
     const available = BOOK_STOCK[bookId];
     const cost = BOOK_COST[bookId];
 
@@ -686,6 +689,7 @@
       // real recorded total via renderEntriesTable() -> updateEntryTotals().
       await refreshTable();
       showFlash(data.message || "Sale recorded.", "success");
+      localStorage.setItem("tirtha-nidhi-updated", String(Date.now()));
 
     } catch (err) {
       console.error("[FNRG] submit error:", err);

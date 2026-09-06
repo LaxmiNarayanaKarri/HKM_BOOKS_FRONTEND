@@ -1,0 +1,76 @@
+/* Inward-stock page states. Shared stock-entry controls live in style.css. */
+#submitBtn,
+.btn-filter,
+.btn-enter {
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.btn-loading {
+  color: transparent !important;
+  pointer-events: none;
+  background-color: #1b5e20 !important;
+  border-color: #1b5e20 !important;
+}
+
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  border: 3px solid #a5d6a7;
+  border-top-color: #ffffff;
+  animation: inward-spin 0.65s linear infinite;
+}
+
+@keyframes inward-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+option[data-optimistic="1"] {
+  font-style: italic;
+}
+
+.page-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(1px);
+}
+
+.page-loading-overlay.visible {
+  display: flex;
+}
+
+.page-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 4px solid #a5d6a7;
+  border-top-color: #1b5e20;
+  animation: inward-spin 0.65s linear infinite;
+}
+
+.page-loading-text {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #1b5e20;
+}

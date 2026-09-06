@@ -162,6 +162,9 @@ def parallel_get_json(calls):
     result you already got from a healthy one. Check each slot with
     `isinstance(result, BackendError)`.
     """
+    if not calls:
+        return []
+
     prepared = []
     for base_url, path, kwargs in calls:
         kwargs = dict(kwargs or {})

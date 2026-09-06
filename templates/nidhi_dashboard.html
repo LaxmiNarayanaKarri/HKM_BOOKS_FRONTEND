@@ -1,6 +1,7 @@
 {% extends layout|default('base.html') %}
 {% block title %}Tirtha Nidhi · FNRG Preaching{% endblock %}
 {% block page_title %}Tirtha Nidhi{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nidhi_dashboard.css') }}">{% endblock %}
 
 {#
   Context this template expects from the Flask route:
@@ -129,11 +130,11 @@
           <td data-sort-value="{{ t.decision_note or t.note or '' }}">{{ t.decision_note or t.note or '—' }}</td>
           <td data-sort-value="{{ t.status.value }}"><span class="transaction-status status-{{ t.status.value|lower }}">{{ t.status.value|title }}</span></td>
           <td>{{ t.decided_by or t.user_id }}</td>
-          <td class="num {{ 'credit' if t.type.value == 'contribution' else 'debit' }}" data-sort-value="{{ t.amount }}">
-            {{ '+' if t.type.value == 'contribution' else '−' }}&#8377;{{ "%.2f"|format(t.amount) }}
+          <td class="num {{ 'credit' if t.type.value in ('contribution', 'sale_profit') else 'debit' }}" data-sort-value="{{ t.amount }}">
+            {{ '+' if t.type.value in ('contribution', 'sale_profit') else '−' }}&#8377;{{ "%.2f"|format(t.amount) }}
           </td>
-          <td class="num" data-sort-value="{{ t.balance_after if t.status.value == 'approved' and t.balance_after is not none else '' }}">
-            {% if t.status.value == 'approved' and t.balance_after is not none %}&#8377;{{ "%.2f"|format(t.balance_after) }}{% else %}—{% endif %}
+          <td class="num" data-sort-value="{{ t.balance_after if t.status.value in ('approved', 'completed') and t.balance_after is not none else '' }}">
+            {% if t.status.value in ('approved', 'completed') and t.balance_after is not none %}&#8377;{{ "%.2f"|format(t.balance_after) }}{% else %}—{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -148,11 +149,11 @@
           <td data-sort-value="{{ a.decision_note or a.note or '' }}">{{ a.decision_note or a.note or '—' }}</td>
           <td data-sort-value="{{ a.status.value }}"><span class="transaction-status status-{{ a.status.value|lower }}">{{ a.status.value|title }}</span></td>
           <td>{{ a.decided_by or a.user_id }}</td>
-          <td class="num {{ 'credit' if a.type.value == 'contribution' else 'debit' }}" data-sort-value="{{ a.amount }}">
-            {{ '+' if a.type.value == 'contribution' else '−' }}&#8377;{{ "%.2f"|format(a.amount) }}
+          <td class="num {{ 'credit' if a.type.value in ('contribution', 'sale_profit') else 'debit' }}" data-sort-value="{{ a.amount }}">
+            {{ '+' if a.type.value in ('contribution', 'sale_profit') else '−' }}&#8377;{{ "%.2f"|format(a.amount) }}
           </td>
-          <td class="num" data-sort-value="{{ a.balance_after if a.status.value == 'approved' and a.balance_after is not none else '' }}">
-            {% if a.status.value == 'approved' and a.balance_after is not none %}&#8377;{{ "%.2f"|format(a.balance_after) }}{% else %}—{% endif %}
+          <td class="num" data-sort-value="{{ a.balance_after if a.status.value in ('approved', 'completed') and a.balance_after is not none else '' }}">
+            {% if a.status.value in ('approved', 'completed') and a.balance_after is not none %}&#8377;{{ "%.2f"|format(a.balance_after) }}{% else %}—{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -263,186 +264,6 @@
 {% endmacro %}
 
 {% block content %}
-<style>
-  /* Searchable user combobox — looks like a native dropdown (bordered box +
-     chevron), but stays an editable text field: typing filters the list
-     below it instead of replacing it with a plain <select>. */
-  .user-combobox {
-    position: relative;
-  }
-  .user-combobox .combobox-input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 9px 34px 9px 12px;
-    font-size: 14px;
-    line-height: 1.3;
-    color: #1f2937;
-    background-color: #fff;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: border-color .15s ease, box-shadow .15s ease;
-  }
-  .user-combobox .combobox-input:hover {
-    border-color: #b8bfc9;
-  }
-  .user-combobox .combobox-input:focus {
-    outline: none;
-    cursor: text;
-    border-color: #d97706;
-    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
-  }
-  .user-combobox .combobox-list {
-    position: absolute;
-    z-index: 40;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    max-height: 230px;
-    overflow-y: auto;
-    padding: 6px;
-    margin: 0;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
-  }
-  .user-combobox .combobox-option {
-    padding: 8px 10px;
-    font-size: 14px;
-    color: #1f2937;
-    border-radius: 6px;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .user-combobox .combobox-option:hover,
-  .user-combobox .combobox-option.combobox-option-active {
-    background: #fef3c7;
-    color: #92400e;
-  }
-  .user-combobox .combobox-empty {
-    padding: 8px 10px;
-    font-size: 13px;
-    color: #9ca3af;
-    font-style: italic;
-  }
-
-  /* Approve / Reject loading state — small inline spinner inside the
-     button itself, so the button visibly shows "working" until the API
-     call resolves and the list is repainted with fresh data. */
-  .approval-actions .btn-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    justify-content: center;
-    min-width: 84px;
-  }
-  .approval-actions .btn-toggle[disabled] {
-    opacity: .7;
-    cursor: not-allowed;
-  }
-  .btn-spinner {
-    width: 13px;
-    height: 13px;
-    border: 2px solid rgba(0, 0, 0, 0.18);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    display: inline-block;
-    animation: btn-spin .6s linear infinite;
-  }
-  .btn-spinner[hidden] {
-    display: none;
-  }
-  .pending-list {
-    position: relative;
-  }
-  .pending-list.is-loading::before {
-    content: 'Updating...';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-top: 34px;
-    color: #374151;
-    background: rgba(255, 255, 255, .72);
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .pending-list.is-loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 2;
-    width: 18px;
-    height: 18px;
-    margin: -20px 0 0 -9px;
-    border: 3px solid rgba(0, 0, 0, .16);
-    border-top-color: #374151;
-    border-radius: 50%;
-    animation: btn-spin .6s linear infinite;
-  }
-  .transaction-status {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
-  }
-  .transaction-status.status-approved {
-    color: #166534;
-    background: #dcfce7;
-  }
-  .transaction-status.status-pending {
-    color: #854d0e;
-    background: #fef3c7;
-  }
-  .transaction-status.status-rejected {
-    color: #991b1b;
-    background: #fee2e2;
-  }
-  .transaction-status.status-completed {
-    color: #1e3a8a;
-    background: #dbeafe;
-  }
-  .activity-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .activity-controls select {
-    min-height: 34px;
-    padding: 5px 9px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    background: #fff;
-    color: #374151;
-  }
-  .sortable-header {
-    cursor: pointer;
-    user-select: none;
-  }
-  .sortable-header::after {
-    content: ' ↕';
-    color: #9ca3af;
-    font-size: 11px;
-  }
-  .sortable-header[aria-sort="ascending"]::after { content: ' ↑'; color: #374151; }
-  .sortable-header[aria-sort="descending"]::after { content: ' ↓'; color: #374151; }
-  @keyframes btn-spin {
-    to { transform: rotate(360deg); }
-  }
-</style>
 <p class="content-subtitle">Srila Prabhupada's Tirtha Nidhi grows and shrinks with every book sale's profit. The Contribution Nidhi holds what devotees have personally given, once approved.</p>
 
 <div id="nidhi-balances">
@@ -454,12 +275,12 @@
   <button type="button" class="btn-toggle" onclick="openModal('modal-redeem')">Raise a redeem request</button>
   <button type="button" class="btn-toggle" onclick="openModal('modal-my-pending')">
     My pending requests
-    <span id="my-pending-badge" class="nidhi-badge-count" {% if not my_pending_contributions %}style="display:none;"{% endif %}>{{ my_pending_contributions|length }}</span>
+    <span id="my-pending-badge" class="nidhi-badge-count{% if not my_pending_contributions %} nidhi-hidden{% endif %}">{{ my_pending_contributions|length }}</span>
   </button>
   {% if can_review_redemptions %}
   <button type="button" class="btn-toggle" onclick="openModal('modal-redeem-review')">
     Redeem review
-    <span id="redeem-review-badge" class="nidhi-badge-count" {% if not pending_redemptions %}style="display:none;"{% endif %}>{{ pending_redemptions|length }}</span>
+    <span id="redeem-review-badge" class="nidhi-badge-count{% if not pending_redemptions %} nidhi-hidden{% endif %}">{{ pending_redemptions|length }}</span>
   </button>
   {% endif %}
 </div>
@@ -475,7 +296,7 @@
   {{ transactions_table(recent_transactions, 'recent-transactions-table', download_name='nidhi-recent-transactions.csv') }}
 </div>
 
-<div id="nidhi-full-history" style="display:none;"></div>
+<div id="nidhi-full-history" class="nidhi-hidden"></div>
 
 <!-- ===================== MODALS (matching base.html's modal system) ===================== -->
 
@@ -533,7 +354,7 @@
       <div class="static-field static-field-total" id="r-total-display">
         Total: &#8377;0
       </div>
-      <div class="field" style="margin-top:16px;">
+      <div class="field nidhi-field-spaced">
         <label for="r-reason">Reason</label>
         <input type="text" name="reason" id="r-reason" required>
       </div>
@@ -920,6 +741,10 @@
       })
       .catch(function () { showFlash('Could not refresh the dashboard.', 'error'); });
   }
+
+  window.addEventListener('storage', function (event) {
+    if (event.key === 'tirtha-nidhi-updated') refreshDashboard();
+  });
 
   // ------------------------------------------------------------------
   // Contribute

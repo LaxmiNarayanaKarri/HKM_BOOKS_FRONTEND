@@ -1,0 +1,4 @@
+/* Sell-entry page styles. Shared table, form, and modal styles live in style.css. */
+.is-hidden {
+  display: none;
+}

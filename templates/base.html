@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}FNRG Preaching{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo-round.png') }}">
+  {% block page_styles %}{% endblock %}
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body class="app-body"><!-- sidebar/dashboard layout, see style.css .app-body rules -->
@@ -16,7 +18,9 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
-        <img src="{{ url_for('static', filename='img/logo.svg') }}" alt="" class="sidebar-logo">
+        <a href="{{ url_for('books.dashboard') }}" class="sidebar-brand-link" aria-label="Go to Dashboard">
+          <img src="{{ url_for('static', filename='img/logo.jpeg') }}" alt="FNRG Preaching logo" class="sidebar-logo">
+        </a>
         <span class="sidebar-brand-text">FNRG Preaching</span>
       </div>
 

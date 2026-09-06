@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Backup — FNRG Preaching{% endblock %}
 {% block page_title %}Backup{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/backup.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Download each of the last 7 days' records as a separate Excel file, for offline backup.</p>

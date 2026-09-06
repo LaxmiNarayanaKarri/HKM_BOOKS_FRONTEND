@@ -1,0 +1,41 @@
+/* Dashboard page states. Layout and reusable components live in style.css. */
+.section-loader {
+  display: none;
+}
+
+.is-loading {
+  position: relative;
+}
+
+.is-loading .section-loader {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.5);
+  z-index: 5;
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(0, 0, 0, 0.15);
+  border-top-color: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  animation: home-spin 0.7s linear infinite;
+}
+
+@keyframes home-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.is-loading-row {
+  opacity: 0.5;
+}
+
+.has-error {
+  outline: 2px solid #e5484d;
+}

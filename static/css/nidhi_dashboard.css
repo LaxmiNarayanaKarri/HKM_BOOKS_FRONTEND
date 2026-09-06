@@ -1,0 +1,179 @@
+/* Nidhi dashboard styles. Shared forms, tables, and modal primitives live in style.css. */
+.user-combobox {
+  position: relative;
+}
+
+.user-combobox .combobox-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 34px 9px 12px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: #1f2937;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.user-combobox .combobox-input:hover { border-color: #b8bfc9; }
+
+.user-combobox .combobox-input:focus {
+  outline: none;
+  cursor: text;
+  border-color: #d97706;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15);
+}
+
+.user-combobox .combobox-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 6px;
+  margin: 0;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1), 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.user-combobox .combobox-option {
+  padding: 8px 10px;
+  font-size: 14px;
+  color: #1f2937;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-combobox .combobox-option:hover,
+.user-combobox .combobox-option.combobox-option-active {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.user-combobox .combobox-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.approval-actions .btn-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  min-width: 84px;
+}
+
+.approval-actions .btn-toggle[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  display: inline-block;
+  animation: nidhi-spin 0.6s linear infinite;
+}
+
+.btn-spinner[hidden] { display: none; }
+
+.pending-list { position: relative; }
+
+.pending-list.is-loading::before {
+  content: "Updating...";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 34px;
+  color: #374151;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pending-list.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  margin: -20px 0 0 -9px;
+  border: 3px solid rgba(0, 0, 0, 0.16);
+  border-top-color: #374151;
+  border-radius: 50%;
+  animation: nidhi-spin 0.6s linear infinite;
+}
+
+.transaction-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.transaction-status.status-approved { color: #166534; background: #dcfce7; }
+.transaction-status.status-pending { color: #854d0e; background: #fef3c7; }
+.transaction-status.status-rejected { color: #991b1b; background: #fee2e2; }
+.transaction-status.status-completed { color: #1e3a8a; background: #dbeafe; }
+
+.activity-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.activity-controls select {
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable-header::after {
+  content: "\2195";
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+  .sortable-header[aria-sort="ascending"]::after { content: "\2191"; color: #374151; }
+  .sortable-header[aria-sort="descending"]::after { content: "\2193"; color: #374151; }
+
+.nidhi-hidden { display: none; }
+.nidhi-field-spaced { margin-top: 16px; }
+
+@keyframes nidhi-spin {
+  to { transform: rotate(360deg); }
+}

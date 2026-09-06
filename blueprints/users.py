@@ -220,9 +220,9 @@ def change_role(username):
 # Shared helpers
 # --------------------------------------------------------------------------- #
 
-def _overview_filters():
+def _overview_filters(today_iso=None):
     """Pull the four overview filter params from query string or form body."""
-    today_iso = date.today().isoformat()
+    today_iso = today_iso or date.today().isoformat()
     return {
         "ov_date_from": (request.values.get("ov_date_from") or "").strip() or today_iso,
         "ov_date": (request.values.get("ov_date") or "").strip() or today_iso,
@@ -298,12 +298,13 @@ def volunteer_assignment():
     if redirect_resp:
         return redirect_resp
 
-    filters = _overview_filters()
+    today_iso = date.today().isoformat()
+    filters = _overview_filters(today_iso)
     page_data = _fetch_overview_payload(filters)
 
     return render_template(
         "volunteer_assignment.html",
-        today=date.today().isoformat(),
+        today=today_iso,
         **page_data,
     )
 

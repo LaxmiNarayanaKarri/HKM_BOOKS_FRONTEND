@@ -46,12 +46,3 @@ def permission_required(action):
     return decorator
 
 
-def _can_review_redemptions():
-    """
-    Soft, non-raising equivalent of @permission_required("nidhi_approve") --
-    used only to decide whether to render/fetch the admin 'Redeem review'
-    section. Mirrors permission_required()'s own check (session role must
-    be in the roles allowed for this action) without redirecting or
-    aborting when it's False.
-    """
-    return session.get("role") in roles_for("nidhi_approve")

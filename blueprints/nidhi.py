@@ -13,10 +13,9 @@ from flask import (
     request,
     session,
     url_for,
-    Response,
 )
 
-from services.api_client import BackendError, get_file, get_json, parallel_get_json, post_json
+from services.api_client import BackendError, get_json, parallel_get_json, post_json
 
 from services.auth import permission_required
 from services.permissions import roles_for

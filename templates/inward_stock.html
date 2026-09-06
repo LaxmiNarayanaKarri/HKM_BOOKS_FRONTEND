@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Inward Stock — FNRG Preaching{% endblock %}
 {% block page_title %}Inward Stock{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/inward_stock.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Record books coming into stock from a purchase, printer order, or donation.</p>
@@ -47,6 +48,7 @@
     <div class="row-actions">
       <button type="button" class="btn-add-row" id="addRowBtn">+ Add Another Book</button>
       <button type="button" class="btn-add-row" id="addSourceBtn">+ Add Source</button>
+      <button type="button" class="btn-add-row" id="addLangCatBtn">+ Add Language / Category</button>
     </div>
 
     <button type="submit" class="btn-enter" id="submitBtn">Submit</button>
@@ -175,38 +177,29 @@
       <h3>Add New Book</h3>
       <button type="button" class="modal-close" data-close-modal="addBookOverlay">&times;</button>
     </div>
-    <p class="hint-text">Adds this title to the dropdowns above so it can be purchased right away.</p>
-    <form id="addBookForm" class="stacked-form" method="POST" action="{{ url_for('books.master_data_add_book') }}">
+    <form method="POST" id="addBookForm" class="modal-form"
+          action="{{ url_for('books.master_data_add_book') }}">
       <div class="field">
-        <label for="newTitle">Book Title</label>
-        <input type="text" id="newTitle" name="title" placeholder="e.g. Teachings of Lord Kapila" required>
-      </div>
-      <div class="field">
-        <label for="newShort">Short Title</label>
-        <input type="text" id="newShort" name="short_title" placeholder="e.g. TLK" maxlength="40">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label for="newLang">Default Language</label>
-          <select id="newLang" name="language" required>
-            <option value="" disabled selected>Select a language</option>
-            {% for l in languages %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="field">
-          <label for="newCat">Category</label>
-          <select id="newCat" name="category" required>
-            <option value="" disabled selected>Select a category</option>
-            {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}
-          </select>
-        </div>
+        <label for="newTitle">Book title</label>
+        <input type="text" id="newTitle" name="title" required placeholder="e.g. Bhagavad Gita">
       </div>
       <div class="field">
-        <label for="newThreshold">Low-Stock Threshold <span class="hint-text">(optional)</span></label>
-        <input type="number" id="newThreshold" name="threshold" placeholder="e.g. 10" min="0" step="1">
+        <label for="newShort">Short title</label>
+        <input type="text" id="newShort" name="short_title" maxlength="40" placeholder="e.g. BG">
       </div>
-      <div class="row-actions">
-        <button type="button" class="btn-add-row" id="addLangCatBtn">+ Add Language / Category</button>
+      <div class="field">
+        <label for="newLang">Language</label>
+        <select id="newLang" name="language" required>
+          <option value="" disabled selected>Select a language</option>
+          {% for l in languages %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="newCat">Category</label>
+        <select id="newCat" name="category" required>
+          <option value="" disabled selected>Select a category</option>
+          {% for c in categories %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}
+        </select>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-toggle" id="cancelAddBook">Cancel</button>
@@ -216,14 +209,14 @@
   </div>
 </div>
 
-<!-- Add Language / Category modal -->
+<!-- Add Language or Category modal -->
 <div class="modal-overlay" id="addLangCatOverlay">
   <div class="modal-panel">
     <div class="modal-header">
-      <h3 id="addLangCatTitle">Add Language / Category</h3>
+      <h3 id="addLangCatTitle">Add Language</h3>
       <button type="button" class="modal-close" data-close-modal="addLangCatOverlay">&times;</button>
     </div>
-    <div class="type-toggle" role="radiogroup" aria-label="What are you adding?">
+    <div class="type-toggle" role="radiogroup" aria-label="Master data type">
       <label class="type-toggle-option">
         <input type="radio" name="langCatType" value="language" checked>
         <span>Language</span>
@@ -233,8 +226,7 @@
         <span>Category</span>
       </label>
     </div>
-    <form method="POST" id="addLangCatForm" class="modal-form"
-          action="{{ url_for('books.master_data_add_language') }}">
+    <form method="POST" id="addLangCatForm" class="modal-form">
       <div class="field">
         <label for="newLangCatName" id="newLangCatLabel">Language name</label>
         <input type="text" id="newLangCatName" name="name" required placeholder="e.g. Telugu">
@@ -279,75 +271,6 @@
   </div>
 </div>
 
-<style>
-  /* ── Submit-button loader (dark green / light green) ──────────────────── */
-  #submitBtn, .btn-filter, .btn-enter {
-    position: relative;
-    transition: background-color 0.15s ease;
-  }
-  .btn-loading {
-    color: transparent !important;
-    pointer-events: none;
-    background-color: #1b5e20 !important; /* dark green */
-    border-color: #1b5e20 !important;
-  }
-  .btn-loading::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 16px;
-    height: 16px;
-    margin: -8px 0 0 -8px;
-    border-radius: 50%;
-    border: 3px solid #a5d6a7;        /* light green track */
-    border-top-color: #ffffff;        /* bright edge so it reads on dark green */
-    animation: btn-spin 0.65s linear infinite;
-  }
-  @keyframes btn-spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* ── Optimistic option styling (brief highlight while unconfirmed) ─────── */
-  option[data-optimistic="1"] {
-    font-style: italic;
-  }
-
-  /* ── Full-page loading overlay ─────────────────────────────────────────── */
-  .page-loading-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(1px);
-  }
-  .page-loading-overlay.visible {
-    display: flex;
-  }
-  .page-loading-box {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-  }
-  .page-loading-spinner {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    border: 4px solid #a5d6a7;   /* light green track */
-    border-top-color: #1b5e20;  /* dark green edge */
-    animation: btn-spin 0.65s linear infinite;
-  }
-  .page-loading-text {
-    margin: 0;
-    font-size: 0.95rem;
-    font-weight: 500;
-    color: #1b5e20;
-  }
-</style>
 {% endblock %}
 
 {% block scripts %}
@@ -357,17 +280,21 @@
 
   const BOOK_CATALOG = {{ book_catalog | tojson }};
   const BOOK_META = {};
-  BOOK_CATALOG.forEach(b => {
-    const id = String(b.id);
-    const title = (b.title || "").trim();
-    if (!id || !title) return;
-    BOOK_META[id] = {
-      title:     title,
-      shorthand: b.short_title || title.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 40),
-      category:  b.category  || "",
-      language:  b.language  || "English",
-    };
-  });
+  function rebuildBookMeta() {
+    Object.keys(BOOK_META).forEach(key => delete BOOK_META[key]);
+    BOOK_CATALOG.forEach(b => {
+      const id = String(b.id);
+      const title = (b.title || "").trim();
+      if (!id || !title) return;
+      BOOK_META[id] = {
+        title:     title,
+        shorthand: b.short_title || title.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 40),
+        category:  b.category  || "",
+        language:  b.language  || "",
+      };
+    });
+  }
+  rebuildBookMeta();
 
   // ── Row management ────────────────────────────────────────────────────────
   const rowsBody    = document.getElementById("rowsBody");
@@ -662,19 +589,7 @@
       if (Array.isArray(data.book_catalog)) {
         BOOK_CATALOG.length = 0;
         data.book_catalog.forEach(b => BOOK_CATALOG.push(b));
-
-        Object.keys(BOOK_META).forEach(k => delete BOOK_META[k]);
-        BOOK_CATALOG.forEach(b => {
-          const id    = String(b.id);
-          const title = (b.title || "").trim();
-          if (!id || !title) return;
-          BOOK_META[id] = {
-            title:     title,
-            shorthand: b.short_title || title.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 40),
-            category:  b.category  || "",
-            language:  b.language  || "English",
-          };
-        });
+        rebuildBookMeta();
 
         // overrides.book may be an id, a title, or undefined — resolve it
         // against the fresh catalog so selection works regardless of which

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Master Data — FNRG Preaching{% endblock %}
 {% block page_title %}Master Data{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/master_data.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Add and review the reference lists the rest of the app draws its dropdowns from — books, categories, languages, locations, and events.</p>

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Upload Data — FNRG Preaching{% endblock %}
 {% block page_title %}Upload Data{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/upload.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Bulk-import sales from an Excel sheet instead of entering them one by one.</p>

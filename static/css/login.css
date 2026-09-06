@@ -1,0 +1,36 @@
+/* Login page styles. Shared controls remain in style.css. */
+.card {
+  text-align: center;
+}
+
+.logo {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  margin: 0 auto 20px;
+  display: block;
+}
+
+.brand-title {
+  color: var(--teal-dark);
+  font-size: 1.9rem;
+  font-weight: 800;
+  margin: 0 0 6px;
+  letter-spacing: 0.2px;
+}
+
+.brand-subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin: 0 0 28px;
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 30px 22px;
+  }
+
+  .brand-title {
+    font-size: 1.6rem;
+  }
+}

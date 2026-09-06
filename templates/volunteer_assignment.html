@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Volunteer Assignment — FNRG Preaching{% endblock %}
 {% block page_title %}Volunteer Assignment{% endblock %}
+{% block page_styles %}<link rel="stylesheet" href="{{ url_for('static', filename='css/volunteer_assignment.css') }}">{% endblock %}
 
 {% block content %}
 <p class="content-subtitle">Assign volunteers to locations and see who's covering what at a glance.</p>
@@ -179,10 +180,10 @@
     </table>
   </div>
 
-  <p class="hint-text" id="emptyHint" {% if assignments %}style="display:none;"{% endif %}>
+  <p class="hint-text{% if assignments %} assignment-hidden{% endif %}" id="emptyHint">
     No assignments yet — add one above.
   </p>
-  <p class="hint-text" id="noFilterMatch" style="display:none;">
+  <p class="hint-text assignment-hidden" id="noFilterMatch">
     No assignments match the current filters.
   </p>
 </section>
@@ -984,124 +985,4 @@ startOverviewPolling();
 document.querySelectorAll("#locationGrid .location-card").forEach(wireNamesToggle);
 </script>
 
-<style>
-/* Minimal styling for the toast stack — merge into your stylesheet, drop from here */
-.toast-stack { position: fixed; top: 16px; right: 16px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
-.toast { padding: 10px 16px; border-radius: 6px; background: #333; color: #fff; opacity: 0; transform: translateY(-8px); transition: opacity .2s, transform .2s; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-.toast.visible { opacity: 1; transform: translateY(0); }
-.toast-success { background: #1b7f3a; }
-.toast-error { background: #b3261e; }
-
-/* Global loading overlay — smooth conic-gradient ring, dark green
-   fading to light green, built from the app's real palette. */
-.api-loader-overlay {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1000;
-  pointer-events: none;
-}
-.api-loader-spinner {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    var(--teal-dark, #0b5d4a),
-    var(--teal-mid, #0e8f6f) 45%,
-    var(--green-bright, #22b573) 75%,
-    transparent 100%
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
-  filter: drop-shadow(0 4px 10px rgba(11, 93, 74, 0.35));
-  animation: fnrg-spin 0.8s linear infinite;
-}
-
-/* Inline button loading state — used on "Save Location/Event" so the
-   spinner sits in the button itself instead of the full-page overlay. */
-.btn-loading {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: not-allowed;
-  opacity: 0.85;
-}
-
-.btn-spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
-  display: inline-block;
-  animation: fnrg-spin 0.7s linear infinite;
-}
-
-/* Section-local loaders — Current Assignments + Locations Overview.
-   Used only for the bulk-delete refetch so it dims just those two
-   cards instead of the whole page. [hidden] must win over the
-   flex display below or the spinner never actually disappears. */
-.section-relative { position: relative; }
-
-.section-loader {
-  position: absolute;
-  inset: 0;
-  background: rgba(255, 255, 255, 0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-  border-radius: var(--radius-md);
-}
-
-.section-loader[hidden] {
-  display: none;
-}
-
-.section-spinner {
-  width: 26px;
-  height: 26px;
-  border-width: 3px;
-  border-color: rgba(11, 93, 74, 0.2);
-  border-top-color: var(--teal-mid);
-}
-
-/* Per-location volunteer sales breakdown (click-to-expand) */
-.location-names-toggle {
-  margin-top: 6px;
-  background: none;
-  border: none;
-  color: var(--teal-mid, #0e8f6f);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
-}
-.location-names-toggle[hidden] { display: none; }
-
-.location-names-list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.location-names-list li {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-}
-.location-names-user { color: var(--text-secondary, #555); }
-.location-names-amount { font-weight: 500; }
-
-.location-names-empty {
-  font-size: 13px;
-  color: var(--text-secondary, #555);
-  margin: 8px 0 0;
-}
-</style>
 {% endblock %}
